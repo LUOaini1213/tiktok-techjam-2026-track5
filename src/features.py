@@ -14,8 +14,14 @@ from transformers import CLIPModel, CLIPProcessor
 
 from .augment import jpeg_compress, down_up_resize, to_rgb
 
-FORENSIC_DIM = 48
+FORENSIC_DIM = 28
 CLIP_DIM = 512
+
+# The forensic branch runs on a NATIVE-scale center crop of this size, never a
+# bilinear downscale: cropping preserves the high-frequency GAN-upsampling combs and
+# JPEG 8x8 grid that the residual/DCT/FFT stats exist to measure, whereas resizing to
+# 128 low-pass-filters them away (aliasing past the lowered Nyquist).
+FORENSIC_WORK_SIZE = 256
 
 
 def get_device() -> torch.device:
@@ -52,18 +58,46 @@ def clip_embed_batch(
     return feats.cpu().numpy().astype(np.float32)
 
 
-def _resize_gray(image: Image.Image, size: int = 128) -> np.ndarray:
-    arr = np.asarray(to_rgb(image).resize((size, size), Image.BILINEAR))
-    gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY).astype(np.float32) / 255.0
-    return gray
+def _forensic_work(image: Image.Image, size: int = FORENSIC_WORK_SIZE) -> np.ndarray:
+    """A size x size NATIVE-scale center crop (RGB, float32 in [0, 255]).
+
+    Center-crop (no resample) keeps native pixel frequencies intact; small images are
+    symmetric-padded up to `size` rather than upscaled. This replaces the old 128x128
+    bilinear downscale that destroyed the forensic signal.
+    """
+    arr = np.asarray(to_rgb(image), dtype=np.float32)
+    h, w = arr.shape[:2]
+    top = max(0, (h - size) // 2)
+    left = max(0, (w - size) // 2)
+    crop = arr[top : top + size, left : left + size]
+    ch, cw = crop.shape[:2]
+    if ch < size or cw < size:
+        crop = np.pad(crop, ((0, size - ch), (0, size - cw), (0, 0)), mode="symmetric")
+    return crop
+
+
+def _luma(rgb01: np.ndarray) -> np.ndarray:
+    return (0.299 * rgb01[..., 0] + 0.587 * rgb01[..., 1] + 0.114 * rgb01[..., 2]).astype(np.float32)
+
+
+def _safe_corr(a: np.ndarray, b: np.ndarray) -> float:
+    """Pearson correlation guarded against a constant channel (returns 0.0)."""
+    if a.std() < 1e-8 or b.std() < 1e-8:
+        return 0.0
+    return float(np.corrcoef(a.ravel(), b.ravel())[0, 1])
 
 
 def forensic_vector(image: Image.Image) -> np.ndarray:
-    """Fixed-length DCT / NPR / color stats. Complements CLIP under JPEG/resize."""
-    rgb = np.asarray(to_rgb(image).resize((128, 128), Image.BILINEAR), dtype=np.float32)
-    rgb01 = rgb / 255.0
-    gray = _resize_gray(image, 128)
+    """NPR-residual / block-DCT / FFT-ring / color stats computed at NATIVE resolution.
 
+    28-D. Complements CLIP by capturing high-frequency synthesis fingerprints that CLIP
+    loses and that a 128x128 downscale would have aliased away.
+    """
+    rgb01 = _forensic_work(image) / 255.0
+    gray = _luma(rgb01)
+    n = gray.shape[0]  # == FORENSIC_WORK_SIZE
+
+    # --- NPR-style residual (native scale) ---
     blur = cv2.GaussianBlur(gray, (5, 5), 1.0)
     resid = gray - blur
     npr_stats = np.array(
@@ -77,10 +111,11 @@ def forensic_vector(image: Image.Image) -> np.ndarray:
         dtype=np.float32,
     )
 
+    # --- 8x8 block DCT high/low energy ratio: 8x8 blocks now align with the JPEG grid ---
     block = 8
     energies = []
-    for y in range(0, 128, block):
-        for x in range(0, 128, block):
+    for y in range(0, n, block):
+        for x in range(0, n, block):
             patch = gray[y : y + block, x : x + block]
             coeff = dct(dct(patch, axis=0, norm="ortho"), axis=1, norm="ortho")
             low = np.abs(coeff[:2, :2]).mean()
@@ -93,41 +128,44 @@ def forensic_vector(image: Image.Image) -> np.ndarray:
             energies.std(),
             np.percentile(energies, 25),
             np.percentile(energies, 75),
+            np.percentile(energies, 95),
         ],
         dtype=np.float32,
     )
 
+    # --- FFT radial rings as fractions of Nyquist; the top rings (>=0.75) hold the
+    #     GAN/upsampling spectral peaks that downscaling would have removed ---
     fft = np.fft.fftshift(np.fft.fft2(gray))
     mag = np.log1p(np.abs(fft))
-    cy, cx = 64, 64
-    rings = []
-    yy, xx = np.ogrid[:128, :128]
+    cy = cx = n // 2
+    half = n / 2.0
+    yy, xx = np.ogrid[:n, :n]
     r = np.sqrt((yy - cy) ** 2 + (xx - cx) ** 2)
-    for lo, hi in ((0, 8), (8, 16), (16, 32), (32, 64)):
-        mask = (r >= lo) & (r < hi)
+    rings = []
+    for lo, hi in ((0.0, 0.125), (0.125, 0.25), (0.25, 0.5), (0.5, 0.75), (0.75, 1.0), (1.0, 1.5)):
+        mask = (r >= lo * half) & (r < hi * half)
         rings.append(mag[mask].mean() if mask.any() else 0.0)
     fft_stats = np.array(rings, dtype=np.float32)
 
-    color_stats = np.concatenate(
+    # --- color stats (resolution-agnostic) ---
+    color_stats = np.array(
         [
-            rgb01.mean(axis=(0, 1)),
-            rgb01.std(axis=(0, 1)),
-            np.corrcoef(rgb01[..., 0].ravel(), rgb01[..., 1].ravel())[:1, 1],
-            np.corrcoef(rgb01[..., 1].ravel(), rgb01[..., 2].ravel())[:1, 1],
-            np.corrcoef(rgb01[..., 0].ravel(), rgb01[..., 2].ravel())[:1, 1],
-        ]
-    ).astype(np.float32)
+            *rgb01.mean(axis=(0, 1)),
+            *rgb01.std(axis=(0, 1)),
+            _safe_corr(rgb01[..., 0], rgb01[..., 1]),
+            _safe_corr(rgb01[..., 1], rgb01[..., 2]),
+            _safe_corr(rgb01[..., 0], rgb01[..., 2]),
+        ],
+        dtype=np.float32,
+    )
 
     lap = cv2.Laplacian(gray, cv2.CV_32F)
     extra = np.array([lap.var(), gray.mean(), gray.std()], dtype=np.float32)
 
     vec = np.concatenate([npr_stats, dct_stats, fft_stats, color_stats, extra])
-    vec = np.nan_to_num(vec, nan=0.0, posinf=0.0, neginf=0.0)
-    if vec.shape[0] < FORENSIC_DIM:
-        vec = np.pad(vec, (0, FORENSIC_DIM - vec.shape[0]))
-    else:
-        vec = vec[:FORENSIC_DIM]
-    return vec.astype(np.float32)
+    vec = np.nan_to_num(vec, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
+    assert vec.shape[0] == FORENSIC_DIM, f"forensic dim {vec.shape[0]} != {FORENSIC_DIM}"
+    return vec
 
 
 def fuse_features(clip_vec: np.ndarray, forensic_vec: np.ndarray, use_forensic: bool) -> np.ndarray:
@@ -151,6 +189,9 @@ def embed_one(
         views.append(down_up_resize(image, tta_resize_scale))
     clip_feats = clip_embed_batch(views, model_id=model_id)
     clip_mean = clip_feats.mean(axis=0)
+    # Re-L2-normalize after averaging: mean-of-unit-vectors has norm < 1 (it encodes
+    # view agreement), which otherwise couples the feature scale to the TTA view count.
+    clip_mean = clip_mean / (np.linalg.norm(clip_mean) + 1e-8)
     forensic = forensic_vector(image) if use_forensic else np.zeros(FORENSIC_DIM, dtype=np.float32)
     return fuse_features(clip_mean, forensic, use_forensic)
 

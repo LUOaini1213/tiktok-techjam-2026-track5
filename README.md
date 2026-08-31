@@ -4,7 +4,9 @@ TikTok TechJam 2026 Track 5 — **Robust Detection of AI-Generated Images Under 
 
 AIGC detectors that look strong on clean lab images often collapse after a TikTok-style repost: JPEG re-encode, thumbnail resize, filter jitter, or avatar crop. RepostGuard is a hackathon-scale detector that treats those transforms as the actual test, not an afterthought.
 
-**Model (well under the 2B limit):** frozen OpenAI CLIP `ViT-B/32` (~88M) + 48-D forensic stats (NPR residual, block DCT, FFT rings) + logistic regression. Inference optionally averages the original view with JPEG-70 and 0.5× down/up (TTA).
+**Model (well under the 2B limit):** frozen OpenAI CLIP `ViT-B/32` (~88M) + 28-D forensic stats (NPR residual, block DCT, FFT rings) computed at **native resolution** + logistic regression. Inference optionally averages the original view with JPEG-70 and 0.5× down/up (TTA); the averaged CLIP embedding is re-L2-normalized.
+
+> **Retrain required after the forensic change.** Forensic features moved from a 128×128 downscale (which low-pass-filtered away the high-frequency fingerprints) to a native-resolution center crop, so the feature width changed (512 CLIP + 28 forensic = 540-D). The committed `artifacts/repostguard.joblib` is stale until you re-run `extract_features.py` → `train.py`; `infer.py` will refuse to run on mismatched weights.
 
 **Training data:** SID-Set binary labels: `0` real vs `1` AIGC-positive (`1` full-synthetic **and** `2` tampered). Official JPEG/blur/resize views plus clean/degraded consistency rows; tampered samples upweighted (`src/train_signal.py`). Features via the same TTA path as inference (`embed_for_score`). The official WildFake demonstration split is **never used for training**.
 

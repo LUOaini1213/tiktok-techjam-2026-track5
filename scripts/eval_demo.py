@@ -51,27 +51,52 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--per_class", type=int, default=1000)
     p.add_argument("--no_tta", action="store_true")
     p.add_argument("--bootstrap_reps", type=int, default=2000)
+    p.add_argument(
+        "--cache_dir",
+        type=Path,
+        default=None,
+        help="Local cache for the demo subsample (default data/demo_subset; gitignored)",
+    )
+    p.add_argument(
+        "--fetch_only",
+        action="store_true",
+        help="Only fill the local cache (network phase); skip scoring",
+    )
     return p.parse_args()
 
 
-def load_balanced(per_class: int, seed: int) -> list[tuple[Image.Image, int]]:
-    """Stream the demo subset, keep per_class of each label. Never cached to train dirs."""
+def _cache_paths(cache_dir: Path, per_class: int) -> dict[int, list[Path]]:
+    out = {}
+    for label in (0, 1):
+        out[label] = sorted(cache_dir.glob(f"{label}_*.png"))[:per_class]
+    return out
+
+
+def fill_cache(cache_dir: Path, per_class: int) -> None:
+    """Stream the demo subset into a lossless local PNG cache (resume-safe by count).
+
+    PNG preserves the decoded pixels exactly -- re-encoding to JPEG would stack a second
+    compression generation on top of the dataset's own and shift the forensic stats.
+    Never written anywhere near the training dirs.
+    """
     from datasets import load_dataset
 
+    have = {k: len(v) for k, v in _cache_paths(cache_dir, per_class).items()} if cache_dir.exists() else {0: 0, 1: 0}
+    if all(have[k] >= per_class for k in have):
+        print(f"cache already full: real={have[0]} fake={have[1]}")
+        return
+    cache_dir.mkdir(parents=True, exist_ok=True)
     try:
         ds = load_dataset(DATASET, CONFIG, split="validation", streaming=True)
     except Exception as exc:
         raise SystemExit(f"Could not stream {DATASET}:{CONFIG} -- skip demo eval. ({exc!r})")
 
-    need = {0: per_class, 1: per_class}
-    have = {0: 0, 1: 0}
-    out: list[tuple[Image.Image, int]] = []
     scanned = 0
     for row in ds:
         scanned += 1
         label = int(row.get("label", -1))
-        if label not in have or have[label] >= need[label]:
-            if all(have[k] >= need[k] for k in need):
+        if label not in have or have[label] >= per_class:
+            if all(have[k] >= per_class for k in have):
                 break
             continue
         img = row.get("image")
@@ -80,23 +105,40 @@ def load_balanced(per_class: int, seed: int) -> list[tuple[Image.Image, int]]:
                 img = Image.fromarray(np.asarray(img))
             except Exception:
                 continue
-        out.append((img.convert("RGB"), label))
+        img.convert("RGB").save(cache_dir / f"{label}_{have[label]:05d}.png")
         have[label] += 1
         if scanned % 500 == 0:
             print(f"  scanned={scanned} real={have[0]}/{per_class} fake={have[1]}/{per_class}")
-    print(f"Loaded real={have[0]} fake={have[1]} (scanned {scanned})")
+    print(f"cache filled: real={have[0]} fake={have[1]} (scanned {scanned})")
+
+
+def load_balanced(per_class: int, seed: int, cache_dir: Path) -> list[tuple[Image.Image, int]]:
+    """Balanced demo sample from the local PNG cache (fills it first if needed)."""
+    fill_cache(cache_dir, per_class)
+    out: list[tuple[Image.Image, int]] = []
+    paths = _cache_paths(cache_dir, per_class)
+    for label in (0, 1):
+        for p in paths[label]:
+            out.append((Image.open(p).convert("RGB"), label))
+    print(f"Loaded real={len(paths[0])} fake={len(paths[1])} from {cache_dir}")
     return out
 
 
 def main() -> None:
     args = parse_args()
     cfg = load_config()
+    cache_dir = args.cache_dir or (cfg["root"] / "data" / "demo_subset")
+
+    if args.fetch_only:
+        fill_cache(cache_dir, args.per_class)
+        return
+
     bundle = load_bundle(model_path(cfg))
     meta = bundle["meta"]
     variant = meta.get("feature_variant", DEFAULT_FEATURE_VARIANT)
     use_tta = False if args.no_tta else bool(meta.get("use_tta", cfg["use_tta"]))
 
-    samples = load_balanced(args.per_class, cfg["seed"])
+    samples = load_balanced(args.per_class, cfg["seed"], cache_dir)
     if not samples:
         raise SystemExit("No demo samples loaded -- skip demo eval.")
 

@@ -1,10 +1,15 @@
-SID-SET SUBSET TRAINED (not smoke)
+SMOKE WEIGHTS (interim) -- to be replaced by scripts/train.py after feature extraction.
 
-n_train=3584
-n_val=64
-acc=0.84375
-auc=0.953125
+feature_variant=pre  (pre=768 CLIP + 28 forensic = 796-D; proj=512+28=540-D)
+calibration=none
+Fit on 2 sample fixtures only (scripts/smoke_train.py). NOT a real classifier.
+
+Real weights: run
+  python scripts/extract_features.py --split train --augment
+  python scripts/extract_features.py --split val
+  python scripts/train.py
+which A/B-selects pre vs proj by GroupKFold(5) CV AUC, sigmoid-calibrates on a
+group-disjoint 30% val slice, and reports metrics on the held-out 70% test slice.
+
 Encoder: frozen openai/clip-vit-base-patch32 (ViT-B/32, well under 2B).
 Labels: SID-Set 0=real, 1=AIGC-positive (includes tampered/label 2). WildFake unused.
-Paired official JPEG/blur/resize views + consistency means. Tampered weight=5.
-Fit on embed_for_score TTA (same as infer). GPU CLIP when CUDA is available.

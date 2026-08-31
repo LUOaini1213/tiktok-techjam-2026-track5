@@ -106,13 +106,23 @@ def group_disjoint_split(n_val: int, cal_frac: float, seed: int):
 
 
 def calibrate(model, X_cal, y_cal):
-    """Sigmoid-calibrate a frozen head. sklearn>=1.6 FrozenEstimator, else cv='prefit'."""
+    """Sigmoid-calibrate an already-fit head on a held-out calibration slice.
+
+    Prefers sklearn>=1.6 FrozenEstimator (base model is NOT refit -- the sigmoid is fit
+    on this exact head's outputs). FrozenEstimator still internally cross-validates to
+    build calibration targets, so cv is capped by the minority class count. Falls back to
+    cv='prefit' on older sklearn where FrozenEstimator does not exist.
+    """
+    import numpy as np
     from sklearn.calibration import CalibratedClassifierCV
 
+    _, class_counts = np.unique(y_cal, return_counts=True)
+    cv = int(min(5, class_counts.min()))
+    cv = max(2, cv)
     try:
         from sklearn.frozen import FrozenEstimator
 
-        cal = CalibratedClassifierCV(FrozenEstimator(model), method="sigmoid")
+        cal = CalibratedClassifierCV(FrozenEstimator(model), method="sigmoid", cv=cv)
     except Exception:
         cal = CalibratedClassifierCV(model, method="sigmoid", cv="prefit")
     cal.fit(X_cal, y_cal)

@@ -15,9 +15,14 @@ artifacts/*.npz
 !artifacts/WEIGHTS.txt
 artifacts/*.pt
 artifacts/*.bin
+# local-path helper lists written by train.py (reference absolute machine paths)
+artifacts/cal_images.json
+artifacts/test_images.json
 features/
 results/error_cases/
 results/*.json
+# error analysis note is a required deliverable -> keep it tracked
+!results/error_analysis.json
 !results/.gitkeep
 
 # notebooks / caches

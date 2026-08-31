@@ -1,0 +1,10 @@
+SID-SET SUBSET TRAINED (not smoke)
+
+n_train=3584
+n_val=64
+acc=0.84375
+auc=0.953125
+Encoder: frozen openai/clip-vit-base-patch32 (ViT-B/32, well under 2B).
+Labels: SID-Set 0=real, 1=AIGC-positive (includes tampered/label 2). WildFake unused.
+Paired official JPEG/blur/resize views + consistency means. Tampered weight=5.
+Fit on embed_for_score TTA (same as infer). GPU CLIP when CUDA is available.

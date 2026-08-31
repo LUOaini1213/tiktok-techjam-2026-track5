@@ -1,0 +1,15 @@
+seed: 2026
+clip_model_id: openai/clip-vit-base-patch32
+train_per_class: 8000
+val_per_class: 1000
+batch_size: 8
+image_size: 224
+use_forensic: true
+use_tta: true
+tta_jpeg_quality: 70
+tta_resize_scale: 0.5
+# SID-Set: 0 real, 1 full_synthetic, 2 tampered. Tampered maps to AIGC-positive.
+drop_tampered: false
+artifacts_dir: artifacts
+data_dir: data/sid_subset
+results_dir: results

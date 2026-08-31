@@ -1,0 +1,32 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.idea/
+.vscode/
+*.egg-info/
+.DS_Store
+
+# data and weights
+data/
+artifacts/*.npz
+!artifacts/repostguard.joblib
+!artifacts/WEIGHTS.txt
+artifacts/*.pt
+artifacts/*.bin
+features/
+results/error_cases/
+results/*.json
+!results/.gitkeep
+
+# notebooks / caches
+.cache/
+*.ipynb_checkpoints/
+huggingface/
+.huggingface/
+
+preds.json
+
+# os
+Thumbs.db

@@ -21,9 +21,9 @@ sys.path.insert(0, str(ROOT))
 from src.augment import multi_paired_official_views
 from src.config import load_config
 from src.data import records_from_folders
-from src.features import get_device
+from src.features import FEATURE_VARIANTS, get_device
 from src.io_utils import open_image
-from src.score import embed_for_score
+from src.score import embed_for_score_dual
 from src.train_signal import sid_label_from_path
 
 
@@ -47,7 +47,7 @@ def extract_split(cfg, split: str, augment: bool, batch_size: int) -> Path:
         raise SystemExit(f"No images under {cfg['data_dir']}/{split}/{{real,aigc}}")
 
     rng = random.Random(cfg["seed"])
-    feat_chunks = []
+    feat_chunks = {v: [] for v in FEATURE_VARIANTS}  # cache BOTH pre + proj variants
     labels = []
     sids = []
     batch_imgs = []
@@ -56,25 +56,24 @@ def extract_split(cfg, split: str, augment: bool, batch_size: int) -> Path:
     views_per_image = 4 if (augment and split == "train") else 1
 
     use_tta = bool(cfg.get("use_tta", True))
-    print(f"score_path=embed_for_score use_tta={use_tta} views_per_image={views_per_image}")
+    print(f"score_path=embed_for_score_dual use_tta={use_tta} views_per_image={views_per_image}")
 
     def flush():
         if not batch_imgs:
             return
-        feats = np.stack(
-            [
-                embed_for_score(
-                    im,
-                    model_id=cfg["clip_model_id"],
-                    use_forensic=cfg["use_forensic"],
-                    use_tta=use_tta,
-                    tta_jpeg_quality=cfg["tta_jpeg_quality"],
-                    tta_resize_scale=cfg["tta_resize_scale"],
-                )
-                for im in batch_imgs
-            ]
-        )
-        feat_chunks.append(feats)
+        duals = [
+            embed_for_score_dual(
+                im,
+                model_id=cfg["clip_model_id"],
+                use_forensic=cfg["use_forensic"],
+                use_tta=use_tta,
+                tta_jpeg_quality=cfg["tta_jpeg_quality"],
+                tta_resize_scale=cfg["tta_resize_scale"],
+            )
+            for im in batch_imgs
+        ]
+        for v in FEATURE_VARIANTS:
+            feat_chunks[v].append(np.stack([d[v] for d in duals]))
         labels.extend(batch_y)
         sids.extend(batch_sid)
         batch_imgs.clear()
@@ -97,13 +96,28 @@ def extract_split(cfg, split: str, augment: bool, batch_size: int) -> Path:
             flush()
     flush()
 
-    feats = np.concatenate(feat_chunks, axis=0) if feat_chunks else np.zeros((0, 1))
+    feats = {
+        v: (np.concatenate(feat_chunks[v], axis=0) if feat_chunks[v] else np.zeros((0, 1)))
+        for v in FEATURE_VARIANTS
+    }
     y = np.array(labels, dtype=np.int64)
     sid_arr = np.array(sids, dtype=np.int64)
     out = cfg["artifacts_dir"] / f"features_{split}.npz"
     out.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(out, X=feats, y=y, sid=sid_arr, views_per_image=np.array([views_per_image]))
-    print(f"Saved {feats.shape} sid_tampered={(sid_arr == 2).sum()} -> {out}")
+    # X (== X_proj) kept for backward compatibility with any old reader; X_pre/X_proj new.
+    np.savez_compressed(
+        out,
+        X=feats["proj"],
+        X_pre=feats["pre"],
+        X_proj=feats["proj"],
+        y=y,
+        sid=sid_arr,
+        views_per_image=np.array([views_per_image]),
+    )
+    print(
+        f"Saved pre={feats['pre'].shape} proj={feats['proj'].shape} "
+        f"sid_tampered={(sid_arr == 2).sum()} -> {out}"
+    )
     return out
 
 

@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:
 FALLBACK_PRED = 0.5
 
 from src.config import load_config, model_path
-from src.features import CLIP_DIM, FORENSIC_DIM
+from src.features import DEFAULT_FEATURE_VARIANT, feature_dim_for_variant
 from src.io_utils import list_images, open_image
 from src.model import load_bundle
 from src.score import embed_for_score, score_from_embed
@@ -53,18 +53,20 @@ def score_directory(
     meta = bundle.get("meta", {})
     model_id = meta.get("clip_model_id", cfg["clip_model_id"])
     use_forensic = meta.get("use_forensic", cfg["use_forensic"])
+    variant = meta.get("feature_variant", DEFAULT_FEATURE_VARIANT)
     if use_tta is None:
         use_tta = bool(meta.get("use_tta", cfg["use_tta"]))
 
     # Fail fast (before the per-image loop, so it is NOT swallowed by the fallback
     # handler) if the weights were trained on a different feature width than the
-    # current pipeline produces -- otherwise every image would silently score 0.5.
-    expected_dim = CLIP_DIM + (FORENSIC_DIM if use_forensic else 0)
+    # current pipeline produces for this variant -- otherwise every image would
+    # silently score the fallback 0.5.
+    expected_dim = feature_dim_for_variant(variant, use_forensic)
     trained_dim = meta.get("feature_dim")
     if trained_dim is not None and int(trained_dim) != expected_dim:
         raise SystemExit(
             f"Weights expect {trained_dim}-D features but the current pipeline produces "
-            f"{expected_dim}-D (CLIP {CLIP_DIM} + forensic {FORENSIC_DIM if use_forensic else 0}). "
+            f"{expected_dim}-D for variant '{variant}' (use_forensic={use_forensic}). "
             "The feature extractor changed -- retrain the head:\n"
             "  python scripts/extract_features.py --split train --augment\n"
             "  python scripts/extract_features.py --split val\n"
@@ -88,6 +90,7 @@ def score_directory(
                 use_tta=use_tta,
                 tta_jpeg_quality=cfg["tta_jpeg_quality"],
                 tta_resize_scale=cfg["tta_resize_scale"],
+                variant=variant,
             )
             pred = score_from_embed(bundle, feat)
         except Exception:  # one unreadable image must not abort the whole run

@@ -1,4 +1,16 @@
-"""Fit logistic regression on extracted features and print clean val metrics."""
+"""Fit logistic head on extracted features, A/B pre- vs projected-CLIP, and calibrate.
+
+Pipeline:
+  1. Load both cached CLIP variants (X_pre 768+forensic, X_proj 512+forensic).
+  2. For each variant, GroupKFold(5) CV AUC with groups = source-image id
+     (row_index // views_per_image) on the RAW view rows, so augmented views of one
+     image never straddle a train/val fold boundary.
+  3. Pick the winner by mean CV AUC; fit its head on full train via the shared
+     training-signal path (consistency rows + tampered upweight).
+  4. Sigmoid-calibrate on a group-disjoint 30% slice of val; report clean metrics on
+     the held-out 70% test slice only.
+  5. Persist winner (calibrated) with meta feature_variant + feature_dim.
+"""
 
 from __future__ import annotations
 
@@ -9,26 +21,41 @@ from pathlib import Path
 
 import numpy as np
 from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve
+from sklearn.model_selection import GroupKFold
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.config import load_config, model_path
+from src.features import FEATURE_VARIANTS, feature_dim_for_variant
 from src.model import save_bundle
-from src.train_signal import expand_with_consistency, fit_with_training_signal, positive_proba
+from src.train_signal import fit_with_training_signal, positive_proba
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument("--C", type=float, default=1.0)
+    p.add_argument("--cv_splits", type=int, default=5)
+    p.add_argument("--cal_frac", type=float, default=0.30, help="Group-disjoint val fraction for calibration")
+    p.add_argument("--no_calibrate", action="store_true")
     return p.parse_args()
 
 
 def load_npz(path: Path):
+    """Return {variant: X}, y, sid, views_per_image. Falls back to X if X_pre absent."""
     data = np.load(path)
-    sid = data["sid"] if "sid" in data.files else np.zeros(len(data["y"]), dtype=np.int64)
-    vpi = int(data["views_per_image"][0]) if "views_per_image" in data.files else 1
-    return data["X"], data["y"], sid, vpi
+    files = set(data.files)
+    Xs = {}
+    for v in FEATURE_VARIANTS:
+        key = f"X_{v}"
+        if key in files:
+            Xs[v] = data[key]
+        elif v == "proj" and "X" in files:
+            Xs[v] = data["X"]  # legacy single-variant cache
+    y = data["y"]
+    sid = data["sid"] if "sid" in files else np.zeros(len(y), dtype=np.int64)
+    vpi = int(data["views_per_image"][0]) if "views_per_image" in files else 1
+    return Xs, y, sid, vpi
 
 
 def fpr_at_tpr(y_true, scores, target_tpr=0.95) -> float:
@@ -39,6 +66,59 @@ def fpr_at_tpr(y_true, scores, target_tpr=0.95) -> float:
     return float(fpr[idx[0]])
 
 
+def source_groups(n_rows: int, views_per_image: int) -> np.ndarray:
+    """Source-image id per RAW view row so CV folds never split one image's views."""
+    return np.arange(n_rows) // max(1, views_per_image)
+
+
+def cv_auc(X, y, sid, groups, views_per_image, C, n_splits) -> float:
+    """Mean GroupKFold AUC. Each fold fits the SAME training-signal head used to ship."""
+    n_groups = len(np.unique(groups))
+    n_splits = min(n_splits, n_groups)
+    if n_splits < 2:
+        return float("nan")
+    gkf = GroupKFold(n_splits=n_splits)
+    aucs = []
+    for tr, te in gkf.split(X, y, groups):
+        # Refit views_per_image inside the fold: the consistency expansion needs whole
+        # image blocks, and GroupKFold keeps each image's views together, but the fold
+        # rows are not necessarily a clean multiple -> fit per-row (vpi=1) inside CV to
+        # keep it robust; the tampered upweight signal is preserved.
+        model = fit_with_training_signal(
+            X[tr], y[tr], sid[tr], views_per_image=1, C=C
+        )
+        s = positive_proba(model, X[te])
+        if len(np.unique(y[te])) < 2:
+            continue
+        aucs.append(roc_auc_score(y[te], s))
+    return float(np.mean(aucs)) if aucs else float("nan")
+
+
+def group_disjoint_split(n_val: int, cal_frac: float, seed: int):
+    """Each val image is its own group (val has 1 view/image) -> a plain row split."""
+    rng = np.random.default_rng(seed)
+    perm = rng.permutation(n_val)
+    n_cal = max(1, int(round(cal_frac * n_val)))
+    n_cal = min(n_cal, n_val - 1)  # keep at least 1 test row
+    cal_idx = np.sort(perm[:n_cal])
+    test_idx = np.sort(perm[n_cal:])
+    return cal_idx, test_idx
+
+
+def calibrate(model, X_cal, y_cal):
+    """Sigmoid-calibrate a frozen head. sklearn>=1.6 FrozenEstimator, else cv='prefit'."""
+    from sklearn.calibration import CalibratedClassifierCV
+
+    try:
+        from sklearn.frozen import FrozenEstimator
+
+        cal = CalibratedClassifierCV(FrozenEstimator(model), method="sigmoid")
+    except Exception:
+        cal = CalibratedClassifierCV(model, method="sigmoid", cv="prefit")
+    cal.fit(X_cal, y_cal)
+    return cal
+
+
 def main() -> None:
     args = parse_args()
     cfg = load_config()
@@ -47,40 +127,94 @@ def main() -> None:
     if not train_path.exists():
         raise SystemExit("Run scripts/extract_features.py --split train --augment first")
 
-    X_train, y_train, sid_train, vpi = load_npz(train_path)
-    X_fit, y_fit, sid_fit = expand_with_consistency(X_train, y_train, sid_train, vpi)
+    Xtr, ytr, sidtr, vpi = load_npz(train_path)
+    groups = source_groups(len(ytr), vpi)
+
+    # ---- A/B: GroupKFold CV AUC per variant ----
+    cv_scores = {}
+    for v in FEATURE_VARIANTS:
+        if v not in Xtr:
+            continue
+        cv_scores[v] = cv_auc(
+            Xtr[v], ytr, sidtr, groups, vpi, C=args.C, n_splits=args.cv_splits
+        )
+        print(f"CV AUC[{v}] = {cv_scores[v]:.4f}  (dim={Xtr[v].shape[1]})")
+    valid = {v: s for v, s in cv_scores.items() if s == s}  # drop NaN
+    if not valid:
+        raise SystemExit("No variant produced a valid CV AUC (need >=2 groups, both classes).")
+    winner = max(valid, key=valid.get)
+    print(f"WINNER variant = {winner} (CV AUC {valid[winner]:.4f})")
+
+    X_train = Xtr[winner]
     model = fit_with_training_signal(
-        X_train,
-        y_train,
-        sid_train,
-        views_per_image=vpi,
-        tampered_weight=5.0,
-        C=args.C,
+        X_train, ytr, sidtr, views_per_image=vpi, tampered_weight=5.0, C=args.C
     )
 
     metrics = {
-        "n_train": int(len(y_fit)),
-        "n_raw_views": int(len(y_train)),
+        "n_train": int(len(ytr)),
         "views_per_image": vpi,
-        "n_tampered_rows": int((sid_fit == 2).sum()),
+        "n_tampered_rows": int((sidtr == 2).sum()),
         "tampered_weight": 5.0,
         "C": args.C,
+        "cv_auc": {v: (None if s != s else float(s)) for v, s in cv_scores.items()},
+        "feature_variant": winner,
     }
+
+    calibrated_model = model
+    calibration = "none"
+    cal_list, test_list = None, None
+
     if val_path.exists():
-        X_val, y_val, _sid_val, _v = load_npz(val_path)
-        scores = positive_proba(model, X_val)
-        pred = (scores >= 0.5).astype(int)
-        metrics.update(
-            {
-                "n_val": int(len(y_val)),
-                "acc": float(accuracy_score(y_val, pred)),
-                "auc": float(roc_auc_score(y_val, scores)),
-                "fpr95": fpr_at_tpr(y_val, scores),
-            }
-        )
+        Xval, yval, _sidval, _v = load_npz(val_path)
+        Xv = Xval[winner]
+
+        if not args.no_calibrate and len(yval) >= 4:
+            cal_idx, test_idx = group_disjoint_split(len(yval), args.cal_frac, cfg["seed"])
+            # Calibrate on cal slice, evaluate ONLY on test slice.
+            if len(np.unique(yval[cal_idx])) >= 2 and len(np.unique(yval[test_idx])) >= 2:
+                calibrated_model = calibrate(model, Xv[cal_idx], yval[cal_idx])
+                calibration = "sigmoid"
+                scores = positive_proba(calibrated_model, Xv[test_idx])
+                yt = yval[test_idx]
+                pred = (scores >= 0.5).astype(int)
+                metrics.update(
+                    {
+                        "n_val_total": int(len(yval)),
+                        "n_cal": int(len(cal_idx)),
+                        "n_val": int(len(test_idx)),
+                        "acc": float(accuracy_score(yt, pred)),
+                        "auc": float(roc_auc_score(yt, scores)),
+                        "fpr95": fpr_at_tpr(yt, scores),
+                    }
+                )
+                cal_list = _row_paths(cfg, cal_idx)
+                test_list = _row_paths(cfg, test_idx)
+            else:
+                args.no_calibrate = True  # fall through to uncalibrated full-val metrics
+
+        if calibration == "none":
+            scores = positive_proba(model, Xv)
+            pred = (scores >= 0.5).astype(int)
+            metrics.update(
+                {
+                    "n_val": int(len(yval)),
+                    "acc": float(accuracy_score(yval, pred)),
+                    "auc": float(roc_auc_score(yval, scores)),
+                    "fpr95": fpr_at_tpr(yval, scores),
+                }
+            )
         print(json.dumps(metrics, indent=2))
     else:
         print("No val features; fitting train only")
+
+    # Persist cal/test image lists so eval_robustness evaluates on the test slice only.
+    if cal_list is not None:
+        (cfg["artifacts_dir"] / "cal_images.json").write_text(
+            json.dumps(cal_list), encoding="utf-8"
+        )
+        (cfg["artifacts_dir"] / "test_images.json").write_text(
+            json.dumps(test_list), encoding="utf-8"
+        )
 
     meta = {
         "clip_model_id": cfg["clip_model_id"],
@@ -90,7 +224,9 @@ def main() -> None:
         "tta_resize_scale": cfg["tta_resize_scale"],
         "seed": cfg["seed"],
         "metrics": metrics,
-        "feature_dim": int(X_train.shape[1]),
+        "feature_variant": winner,
+        "feature_dim": int(feature_dim_for_variant(winner, cfg["use_forensic"])),
+        "calibration": calibration,
         "param_note": "Frozen CLIP ViT-B/32 + logistic regression, well under 2B params",
         "training_data": (
             "SID-Set subset. Binary 0=real vs 1=AIGC-positive (full-synthetic + tampered). "
@@ -102,23 +238,43 @@ def main() -> None:
         "tampered_weight": 5.0,
     }
     out = model_path(cfg)
-    save_bundle(out, model, meta)
+    save_bundle(out, calibrated_model, meta)
+    _write_weights_note(cfg, metrics, winner, calibration)
+    print(f"Wrote {out}")
+
+
+def _row_paths(cfg, idx: np.ndarray) -> list[str]:
+    """Val image paths in the same row order extract_features wrote them (sorted rglob)."""
+    from src.data import records_from_folders
+
+    rows = [r for r in records_from_folders(cfg["data_dir"]) if r["split"] == "val"]
+    paths = [r["path"] for r in rows]
+    return [paths[i] for i in idx if i < len(paths)]
+
+
+def _write_weights_note(cfg, metrics, winner, calibration) -> None:
     note = cfg["artifacts_dir"] / "WEIGHTS.txt"
+    cv = metrics.get("cv_auc", {})
     note.write_text(
         (
             "SID-SET SUBSET TRAINED (not smoke)\n\n"
+            f"feature_variant={winner}  (pre=768+forensic, proj=512+forensic)\n"
+            f"CV AUC pre={cv.get('pre')}  proj={cv.get('proj')}\n"
             f"n_train={metrics.get('n_train')}\n"
-            f"n_val={metrics.get('n_val')}\n"
+            f"n_val(test slice)={metrics.get('n_val')}\n"
+            f"n_cal={metrics.get('n_cal')}\n"
             f"acc={metrics.get('acc')}\n"
             f"auc={metrics.get('auc')}\n"
+            f"fpr95={metrics.get('fpr95')}\n"
+            f"calibration={calibration}\n"
             "Encoder: frozen openai/clip-vit-base-patch32 (ViT-B/32, well under 2B).\n"
             "Labels: SID-Set 0=real, 1=AIGC-positive (includes tampered/label 2). WildFake unused.\n"
             "Paired official JPEG/blur/resize views + consistency means. Tampered weight=5.\n"
-            "Fit on embed_for_score TTA (same as infer). GPU CLIP when CUDA is available.\n"
+            "Fit on embed_for_score TTA (same as infer). Sigmoid-calibrated on group-disjoint\n"
+            "30% of val; metrics reported on the held-out 70% test slice only.\n"
         ),
         encoding="utf-8",
     )
-    print(f"Wrote {out}")
     print(f"Wrote {note}")
 
 

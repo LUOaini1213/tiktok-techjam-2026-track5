@@ -25,17 +25,25 @@ class RobustnessTableTests(unittest.TestCase):
     def test_evaluate_robustness_writes_official_families(self):
         with tempfile.TemporaryDirectory() as td:
             dest = Path(td) / "robustness_table.csv"
-            out = evaluate_robustness(max_images=2, use_tta=False, table_path=dest)
+            # Keep bootstrap tiny so the test stays fast; the CI columns still get written.
+            out = evaluate_robustness(
+                max_images=2, use_tta=False, table_path=dest, bootstrap_reps=50
+            )
             self.assertTrue(out.exists())
             with out.open(newline="", encoding="utf-8") as f:
                 table = list(csv.DictReader(f))
         names = [row["transform"] for row in table]
         joined = " ".join(names)
         self.assertTrue(table)
-        self.assertEqual(list(table[0].keys()), ["transform", "n", "acc", "auc"])
+        self.assertEqual(
+            list(table[0].keys()),
+            ["transform", "n", "acc", "auc", "auc_lo", "auc_hi"],
+        )
         for family in ("clean", "jpeg", "blur", "resize", "noise", "jitter", "crop"):
             self.assertIn(family, joined, msg=f"missing family {family} in {names}")
         for row in table:
             float(row["acc"])
             float(row["auc"])
+            float(row["auc_lo"])
+            float(row["auc_hi"])
             self.assertGreaterEqual(int(row["n"]), 2)

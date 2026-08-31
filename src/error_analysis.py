@@ -6,6 +6,7 @@ from pathlib import Path
 from .augment import jpeg_compress
 from .config import load_config, model_path
 from .data import records_from_folders
+from .features import DEFAULT_FEATURE_VARIANT
 from .io_utils import open_image
 from .model import load_bundle
 from .score import embed_for_score, score_from_embed
@@ -15,6 +16,7 @@ def collect_errors(k: int = 8, max_images: int | None = None, use_tta: bool | No
     cfg = load_config()
     bundle = load_bundle(model_path(cfg))
     meta = bundle["meta"]
+    variant = meta.get("feature_variant", DEFAULT_FEATURE_VARIANT)
     rows = [r for r in records_from_folders(cfg["data_dir"]) if r["split"] == "val"]
     if max_images:
         from .eval_robustness import balanced_val_slice
@@ -31,6 +33,7 @@ def collect_errors(k: int = 8, max_images: int | None = None, use_tta: bool | No
             model_id=meta.get("clip_model_id", cfg["clip_model_id"]),
             use_forensic=meta.get("use_forensic", True),
             use_tta=use_tta,
+            variant=variant,
         )
         pred = score_from_embed(bundle, feat)
         jpeg = jpeg_compress(im, 30)
@@ -39,6 +42,7 @@ def collect_errors(k: int = 8, max_images: int | None = None, use_tta: bool | No
             model_id=meta.get("clip_model_id", cfg["clip_model_id"]),
             use_forensic=meta.get("use_forensic", True),
             use_tta=use_tta,
+            variant=variant,
         )
         pred_j = score_from_embed(bundle, feat_j)
         scored.append({**row, "pred": pred, "pred_jpeg30": pred_j})

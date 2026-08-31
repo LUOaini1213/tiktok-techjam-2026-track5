@@ -15,7 +15,25 @@ from transformers import CLIPModel, CLIPProcessor
 from .augment import jpeg_compress, down_up_resize, to_rgb
 
 FORENSIC_DIM = 28
-CLIP_DIM = 512
+CLIP_DIM = 512  # projected (visual_projection) feature width
+CLIP_PRE_DIM = 768  # pre-projection (pooler_output, post-LayerNorm CLS) feature width
+
+# Two CLIP feature variants are cached from ONE forward pass and A/B'd at train time:
+#   "proj" = visual_projection(pooler_output), 512-d  (UnivFD's actual probe input)
+#   "pre"  = pooler_output, 768-d                     (post-LayerNorm CLS, pre-projection)
+# Cozzolino et al. (arXiv:2312.00195) find pre-projection usually beats projected for
+# linear-probe fake detection; train.py picks the winner by GroupKFold CV AUC.
+FEATURE_VARIANTS = ("pre", "proj")
+DEFAULT_FEATURE_VARIANT = "pre"
+
+
+def clip_dim_for_variant(variant: str) -> int:
+    return CLIP_PRE_DIM if variant == "pre" else CLIP_DIM
+
+
+def feature_dim_for_variant(variant: str, use_forensic: bool) -> int:
+    return clip_dim_for_variant(variant) + (FORENSIC_DIM if use_forensic else 0)
+
 
 # The forensic branch runs on a NATIVE-scale center crop of this size, never a
 # bilinear downscale: cropping preserves the high-frequency GAN-upsampling combs and
@@ -40,10 +58,16 @@ def load_clip(model_id: str = "openai/clip-vit-base-patch32"):
     return processor, model, device
 
 
-def clip_embed_batch(
+def clip_embed_batch_dual(
     images: Sequence[Image.Image],
     model_id: str = "openai/clip-vit-base-patch32",
-) -> np.ndarray:
+) -> dict[str, np.ndarray]:
+    """One CLIP forward -> both L2-normalized variants: {"pre": 768-d, "proj": 512-d}.
+
+    pooler_output = post-LayerNorm CLS token = PRE-projection feature (768-d).
+    visual_projection(pooler_output) = projected feature (512-d). Both are captured
+    from the SAME forward so there is no extra cost to A/B them.
+    """
     processor, model, device = load_clip(model_id)
     if device.type != "cuda" and torch.cuda.is_available():
         raise RuntimeError("CUDA is available but CLIP embed is not on GPU")
@@ -53,9 +77,22 @@ def clip_embed_batch(
     with torch.no_grad():
         vision = model.vision_model(pixel_values=pixel)
         pooled = vision.pooler_output
-        feats = model.visual_projection(pooled)
-        feats = torch.nn.functional.normalize(feats.float(), dim=-1)
-    return feats.cpu().numpy().astype(np.float32)
+        projected = model.visual_projection(pooled)
+        pre = torch.nn.functional.normalize(pooled.float(), dim=-1)
+        proj = torch.nn.functional.normalize(projected.float(), dim=-1)
+    return {
+        "pre": pre.cpu().numpy().astype(np.float32),
+        "proj": proj.cpu().numpy().astype(np.float32),
+    }
+
+
+def clip_embed_batch(
+    images: Sequence[Image.Image],
+    model_id: str = "openai/clip-vit-base-patch32",
+    variant: str = "proj",
+) -> np.ndarray:
+    """Back-compat single-variant helper (defaults to the 512-d projected feature)."""
+    return clip_embed_batch_dual(images, model_id=model_id)[variant]
 
 
 def _forensic_work(image: Image.Image, size: int = FORENSIC_WORK_SIZE) -> np.ndarray:
@@ -174,6 +211,48 @@ def fuse_features(clip_vec: np.ndarray, forensic_vec: np.ndarray, use_forensic: 
     return np.concatenate([clip_vec, forensic_vec], axis=-1).astype(np.float32)
 
 
+def _tta_clip_means(
+    image: Image.Image,
+    model_id: str,
+    use_tta: bool,
+    tta_jpeg_quality: int,
+    tta_resize_scale: float,
+) -> dict[str, np.ndarray]:
+    """TTA-averaged, re-L2-normalized CLIP means for BOTH variants from one view set."""
+    views = [image]
+    if use_tta:
+        views.append(jpeg_compress(image, tta_jpeg_quality))
+        views.append(down_up_resize(image, tta_resize_scale))
+    dual = clip_embed_batch_dual(views, model_id=model_id)
+    means = {}
+    for variant, feats in dual.items():
+        mean = feats.mean(axis=0)
+        # Re-L2-normalize after averaging: mean-of-unit-vectors has norm < 1 (it encodes
+        # view agreement), which otherwise couples the feature scale to the TTA view count.
+        means[variant] = (mean / (np.linalg.norm(mean) + 1e-8)).astype(np.float32)
+    return means
+
+
+def embed_one_dual(
+    image: Image.Image,
+    model_id: str,
+    use_forensic: bool = True,
+    use_tta: bool = True,
+    tta_jpeg_quality: int = 70,
+    tta_resize_scale: float = 0.5,
+) -> dict[str, np.ndarray]:
+    """Fused feature for BOTH variants: {"pre": pre+forensic, "proj": proj+forensic}.
+
+    The forensic vector is computed ONCE and shared; only the CLIP half differs. This is
+    the single shared embed path -- extract/train/eval/infer all go through here so the
+    two cached variants are guaranteed identical to what infer produces at score time.
+    """
+    image = to_rgb(image)
+    means = _tta_clip_means(image, model_id, use_tta, tta_jpeg_quality, tta_resize_scale)
+    forensic = forensic_vector(image) if use_forensic else np.zeros(FORENSIC_DIM, dtype=np.float32)
+    return {v: fuse_features(means[v], forensic, use_forensic) for v in FEATURE_VARIANTS}
+
+
 def embed_one(
     image: Image.Image,
     model_id: str,
@@ -181,19 +260,17 @@ def embed_one(
     use_tta: bool = True,
     tta_jpeg_quality: int = 70,
     tta_resize_scale: float = 0.5,
+    variant: str = DEFAULT_FEATURE_VARIANT,
 ) -> np.ndarray:
-    image = to_rgb(image)
-    views = [image]
-    if use_tta:
-        views.append(jpeg_compress(image, tta_jpeg_quality))
-        views.append(down_up_resize(image, tta_resize_scale))
-    clip_feats = clip_embed_batch(views, model_id=model_id)
-    clip_mean = clip_feats.mean(axis=0)
-    # Re-L2-normalize after averaging: mean-of-unit-vectors has norm < 1 (it encodes
-    # view agreement), which otherwise couples the feature scale to the TTA view count.
-    clip_mean = clip_mean / (np.linalg.norm(clip_mean) + 1e-8)
-    forensic = forensic_vector(image) if use_forensic else np.zeros(FORENSIC_DIM, dtype=np.float32)
-    return fuse_features(clip_mean, forensic, use_forensic)
+    """Single-variant fused feature (default pre-projection). Shares embed_one_dual."""
+    return embed_one_dual(
+        image,
+        model_id=model_id,
+        use_forensic=use_forensic,
+        use_tta=use_tta,
+        tta_jpeg_quality=tta_jpeg_quality,
+        tta_resize_scale=tta_resize_scale,
+    )[variant]
 
 
 def embed_many(

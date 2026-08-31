@@ -91,14 +91,48 @@ def _existing_sid_counts(out_dir: Path, split_name: str) -> dict[int, int]:
     return counts
 
 
+def _resolve_hf_token() -> str | None:
+    """Prefer an explicit HF_TOKEN env var, else the logged-in CLI token, else None.
+
+    A token lifts the unauthenticated rate limit that was killing the stream early
+    (the shipped n_val=64 came from a 429/reset mid-stream, not a small dataset).
+    Anonymous access still works for this public dataset -- just slower / rate-limited,
+    which is why iteration is wrapped in retry-with-backoff below.
+    """
+    import os
+
+    tok = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    if tok:
+        return tok
+    try:
+        from huggingface_hub import get_token
+
+        return get_token()
+    except Exception:
+        return None
+
+
 def subsample_sid_streaming(
     out_dir: Path,
     train_per_class: int,
     val_per_class: int,
     seed: int = 2026,
+    max_retries: int = 4,
 ) -> dict[str, Any]:
-    """Stream SID-Set. Label 2 is mapped to AIGC-positive, never dropped."""
+    """Stream SID-Set. Label 2 is mapped to AIGC-positive, never dropped.
+
+    Resume-safe (counts existing files and tops up) and transient-error-safe (the
+    stream iterator is re-created with exponential backoff up to `max_retries` times
+    when the HF Hub drops the connection mid-row-group). At the end it ASSERTS every
+    per-class quota is met and exits non-zero otherwise -- it never silently ships a
+    partial subset (the old failure mode that produced a 64-image val split).
+    """
+    import time
+
     from datasets import load_dataset
+
+    token = _resolve_hf_token()
+    print(f"hf_token={'present' if token else 'ANONYMOUS (rate-limited; retry-on-error enabled)'}")
 
     quotas = {
         "train": _sid_quotas(train_per_class),
@@ -113,50 +147,86 @@ def subsample_sid_streaming(
     def _full(split_name: str) -> bool:
         return all(counts[split_name][k] >= quotas[split_name][k] for k in quotas[split_name])
 
-    for split_name, hf_split in (("train", "train"), ("val", "validation")):
-        if _full(split_name):
-            continue
+    def _open_stream(hf_split: str, split_name: str):
         try:
-            ds = load_dataset("saberzl/SID_Set", split=hf_split, streaming=True)
+            return load_dataset(
+                "saberzl/SID_Set", split=hf_split, streaming=True, token=token
+            )
         except Exception:
-            ds = load_dataset(
+            return load_dataset(
                 "saberzl/SID_Set",
                 split="val" if split_name == "val" else "train",
                 streaming=True,
+                token=token,
             )
 
-        for i, row in enumerate(ds):
-            ingested = ingest_sid_record(row)
-            if ingested is None:
-                continue
-            sid = ingested["sid_label"]
-            if counts[split_name][sid] >= quotas[split_name][sid]:
-                if _full(split_name):
+    for split_name, hf_split in (("train", "train"), ("val", "validation")):
+        if _full(split_name):
+            print(f"{split_name}: quota already satisfied on disk, skipping stream")
+            continue
+
+        scanned = 0
+        attempt = 0
+        while not _full(split_name):
+            try:
+                ds = _open_stream(hf_split, split_name)
+                for row in ds:
+                    scanned += 1
+                    ingested = ingest_sid_record(row)
+                    if ingested is None:
+                        continue
+                    sid = ingested["sid_label"]
+                    if counts[split_name][sid] >= quotas[split_name][sid]:
+                        if _full(split_name):
+                            break
+                        continue
+                    img = ingested["image"]
+                    if not isinstance(img, Image.Image):
+                        img = Image.fromarray(img).convert("RGB")
+                    idx = counts[split_name][sid]
+                    dest = out_dir / split_name / ingested["folder"] / f"{sid}_{idx:06d}.jpg"
+                    while dest.exists():
+                        idx += 1
+                        dest = out_dir / split_name / ingested["folder"] / f"{sid}_{idx:06d}.jpg"
+                    write_image(dest, img)
+                    counts[split_name][sid] = idx + 1
+                    saved.append(
+                        {
+                            "path": str(dest),
+                            "sid_label": sid,
+                            "label": ingested["label"],
+                            "split": split_name,
+                        }
+                    )
+                    if scanned % 200 == 0:
+                        print(
+                            f"{split_name} sid0={counts[split_name][0]}/{quotas[split_name][0]} "
+                            f"sid1={counts[split_name][1]}/{quotas[split_name][1]} "
+                            f"sid2={counts[split_name][2]}/{quotas[split_name][2]} scanned={scanned}"
+                        )
+                # Stream exhausted. If quota still unmet, the dataset really ran out.
+                break
+            except Exception as exc:  # transient HF drop: back off and re-open (resume skips existing)
+                attempt += 1
+                if attempt > max_retries:
+                    print(
+                        f"{split_name}: giving up after {max_retries} retries "
+                        f"(scanned={scanned}); last error: {exc!r}"
+                    )
                     break
-                continue
-            img = ingested["image"]
-            if not isinstance(img, Image.Image):
-                img = Image.fromarray(img).convert("RGB")
-            idx = counts[split_name][sid]
-            dest = out_dir / split_name / ingested["folder"] / f"{sid}_{idx:06d}.jpg"
-            while dest.exists():
-                idx += 1
-                dest = out_dir / split_name / ingested["folder"] / f"{sid}_{idx:06d}.jpg"
-            write_image(dest, img)
-            counts[split_name][sid] = idx + 1
-            saved.append(
-                {
-                    "path": str(dest),
-                    "sid_label": sid,
-                    "label": ingested["label"],
-                    "split": split_name,
-                }
-            )
-            if i % 200 == 0:
+                wait = min(60, 2 ** attempt)
                 print(
-                    f"{split_name} sid0={counts[split_name][0]} "
-                    f"sid1={counts[split_name][1]} sid2={counts[split_name][2]} scanned={i}"
+                    f"{split_name}: stream error (attempt {attempt}/{max_retries}, "
+                    f"scanned={scanned}): {exc!r} -- retrying in {wait}s"
                 )
+                time.sleep(wait)
+
+        print(
+            f"{split_name} DONE scanned={scanned} "
+            f"sid0={counts[split_name][0]}/{quotas[split_name][0]} "
+            f"sid1={counts[split_name][1]}/{quotas[split_name][1]} "
+            f"sid2={counts[split_name][2]}/{quotas[split_name][2]}"
+        )
 
     binary = {
         split: {
@@ -178,4 +248,22 @@ def subsample_sid_streaming(
         ),
     }
     save_split(out_dir / "split.json", manifest)
+
+    # Never silently ship a partial subset: assert every per-class quota was met.
+    shortfalls = []
+    for split_name in ("train", "val"):
+        for sid, need in quotas[split_name].items():
+            have = counts[split_name][sid]
+            if have < need:
+                shortfalls.append(f"{split_name} sid{sid}: {have}/{need}")
+    if shortfalls:
+        import sys
+
+        print(
+            "QUOTA NOT MET -- subset is incomplete:\n  " + "\n  ".join(shortfalls),
+            file=sys.stderr,
+        )
+        print(f"Scanned counts by sid: {counts}", file=sys.stderr)
+        sys.exit(2)
+
     return manifest

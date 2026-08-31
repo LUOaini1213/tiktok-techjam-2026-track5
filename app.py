@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.augment import center_crop, gaussian_blur, jpeg_compress
 from src.config import load_config, model_path
-from src.features import embed_one
+from src.features import DEFAULT_FEATURE_VARIANT, embed_one
 from src.model import load_bundle, predict_proba
 
 cfg = load_config()
@@ -44,6 +44,7 @@ def score_image(image: Image.Image, jpeg_q: int, blur_sigma: float, crop_ratio: 
         model_id=META.get("clip_model_id", cfg["clip_model_id"]),
         use_forensic=META.get("use_forensic", True),
         use_tta=META.get("use_tta", True),
+        variant=META.get("feature_variant", DEFAULT_FEATURE_VARIANT),
     )
     pred = float(predict_proba(BUNDLE, feat.reshape(1, -1))[0])
     pred = min(1.0, max(0.0, pred))

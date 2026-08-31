@@ -18,9 +18,13 @@ def collect_errors(k: int = 8, max_images: int | None = None, use_tta: bool | No
     meta = bundle["meta"]
     variant = meta.get("feature_variant", DEFAULT_FEATURE_VARIANT)
     rows = [r for r in records_from_folders(cfg["data_dir"]) if r["split"] == "val"]
-    if max_images:
-        from .eval_robustness import balanced_val_slice
+    # Exclude calibration images when a cal/test split exists (same as eval_robustness).
+    from .eval_robustness import _load_test_image_set, balanced_val_slice
 
+    test_set = _load_test_image_set(cfg)
+    if test_set is not None:
+        rows = [r for r in rows if str(Path(r["path"])) in test_set]
+    if max_images:
         rows = balanced_val_slice(rows, max_images)
     if use_tta is None:
         use_tta = bool(meta.get("use_tta", True))

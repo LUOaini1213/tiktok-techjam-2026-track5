@@ -83,7 +83,9 @@ python infer.py --input_dir samples --output preds.json
 
 > **旁白.** "This is the whole point. I'm degrading the image live — JPEG 30, blur, noise, an 80-percent crop — the transformed view on the right is visibly damaged, and the score barely moves."
 
-> ⚠️ **录制注意**：noise 滑块是本次新加的。如果 promote 了 noise-augmented 模型，这一拖是全片最有说服力的 3 秒 —— 一定要给 p(AIGC) 数字一个特写。
+> ⭐ **录制注意**：noise 滑块是本次新加的，而且 noise-augmented 模型**已经 promote 上线**。
+> 拖到 σ=0.10 时 p(AIGC) 基本不掉 —— 这正是全片最有说服力的 3 秒（改进前这一档 AUC 只有
+> 0.8117，准确率 0.65；现在 0.9479 / 0.88）。一定要给 p(AIGC) 数字一个特写，并停 2 秒。
 
 ### (c) 1:55–2:20 — 可复现 (25s)
 
@@ -100,22 +102,35 @@ python scripts/update_readme.py   # 结果直接写回 README
 
 ## 2:20–2:45 — Results
 
-**画面** — 结果表，高亮 clean vs 最差项：
+**画面** — 左右对比表，高亮 noise 三行（`results/ab_summary.csv`）：
 
-| | AUC |
-|---|---|
-| clean | **0.9634** |
-| jpeg_30 | 0.9547 |
-| resize_0.25 | 0.9455 |
-| crop_0.80 | 0.9521 |
-| *(worst)* noise_0.10 | *见下* |
+| Transform | before | **shipped** | Δ |
+|---|---:|---:|---:|
+| clean | 0.9634 | **0.9629** | −0.0005 |
+| jpeg_30 | 0.9547 | **0.9557** | +0.0010 |
+| resize_0.25 | 0.9455 | **0.9472** | +0.0017 |
+| **noise_0.10** | 0.8117 | **0.9479** | **+0.1362** |
+| *(now worst)* jitter_0.20 | 0.9362 | **0.9411** | +0.0049 |
 
-> **旁白.** "Clean AUC is 0.963. Under JPEG-30 it holds at 0.955; under a quarter-scale thumbnail, 0.946. We also found our own weak spot by measuring rather than assuming: the three transform families that were *not* training views were our three weakest rows."
+> **旁白.** "Clean AUC is 0.963, and it holds at 0.956 under JPEG-30. But the number I
+> actually care about is this one. We found our own worst bug by measuring instead of
+> assuming: our evaluation grid has six transform families, and only four of them were
+> ever training views. Noise was scored but never learned — and it collapsed to 0.81.
+> We added the missing training view, refit in about a minute, and it went to 0.95.
+> Plus 0.136 AUC, non-overlapping confidence intervals, and clean accuracy unchanged."
 
-**⚠️ 录制前替换的数字**（跑完 A/B 后回填）：
-- promote 了 → 说 "adding the missing families lifted the worst transform from **0.8117** to **<new>**, at **<clean delta>** clean AUC" + 放 `results/ab_summary.csv` 对比
-- 没 promote → 保留 0.8117，说 "we measured it, we report it, and we know the fix" 并指向 limitations 章节
-- 跨源泛化：`results/demo_benchmark.csv`（WildFake demo subset，COCO 真图 + DALL·E-3 假图，**从未参与训练**）
+**必须说的一句（诚实性，评委很吃这套）：**
+
+> "Three transforms improved beyond overlapping bootstrap confidence intervals. Zero
+> regressed beyond them. And the worst case across the whole grid went from 0.81 to 0.94."
+
+**画面补充（各 2 秒即可）**
+- `results/robustness_chart.png` — 15 个 transform 的 AUC + 95% CI
+- 跨源泛化 `results/demo_benchmark.csv`：WildFake demo subset（COCO 真图 + DALL·E-3 假图，**从未参与训练**）clean AUC **0.9372** — 说 "a generator family the model never saw"
+- 误报代价：FPR 12.9%、FPR@95%TPR 0.190；JPEG-30 会把 **42** 张真图推过阈值（改进前是 53 张）
+
+> ⚠️ 口播不要把 demo benchmark 说成 A/B：shipped 跑的是 1000 张，baseline 快照是 2000 张，
+> 两者 n 不同，不能直接比。A/B 证据是上面那张 1400 张同一切片的 robustness 表。
 
 ---
 

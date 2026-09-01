@@ -78,6 +78,29 @@ def demo_section(results: Path) -> str:
     return "\n".join(out)
 
 
+def ab_section(results: Path) -> str:
+    rows = _rows(results / "ab_summary.csv")
+    if not rows:
+        return MISSING
+    head = (
+        "| Transform | baseline AUC | shipped AUC | delta AUC | CIs disjoint |\n"
+        "|---|---:|---:|---:|---|"
+    )
+    body = "\n".join(
+        f"| `{r['transform']}` | {r['auc_baseline']} | {r['auc_candidate']} | "
+        f"{r['delta_auc']} | {r['ci_disjoint']} |"
+        for r in rows
+    )
+    gains = [r for r in rows if r["ci_disjoint"] == "yes" and float(r["delta_auc"]) > 0]
+    losses = [r for r in rows if r["ci_disjoint"] == "yes" and float(r["delta_auc"]) < 0]
+    note = (
+        f"\n\n{len(gains)} transform(s) improved beyond overlapping bootstrap CIs; "
+        f"{len(losses)} regressed beyond them."
+    )
+    return f"{head}\n{body}{note}"
+
+
+
 def error_section(results: Path) -> str:
     path = results / "error_analysis.json"
     if not path.exists():
@@ -130,6 +153,7 @@ def main() -> None:
     for name, body in (
         ("ROBUSTNESS_TABLE", robustness_section(results)),
         ("DEMO_TABLE", demo_section(results)),
+        ("AB_TABLE", ab_section(results)),
         ("ERROR_ANALYSIS", error_section(results)),
     ):
         text = replace_section(text, name, body)

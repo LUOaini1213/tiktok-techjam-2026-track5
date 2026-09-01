@@ -1,0 +1,137 @@
+{
+  "summary": {
+    "n": 1400,
+    "n_real": 720,
+    "n_fake": 680,
+    "threshold": 0.5,
+    "n_false_positives": 93,
+    "n_false_negatives": 44,
+    "fpr": 0.12916666666666668,
+    "fnr": 0.06470588235294118,
+    "auc_clean": 0.9634170751633987,
+    "auc_jpeg30": 0.9547426470588235,
+    "fpr_at_95tpr_clean": 0.16944444444444445,
+    "fpr_at_95tpr_jpeg30": 0.21805555555555556,
+    "mean_score_drift_jpeg30_real": 0.03135358325212445,
+    "mean_score_drift_jpeg30_fake": 0.005481613824868198,
+    "n_flips_to_fp_jpeg30": 53,
+    "n_flips_to_fn_jpeg30": 16
+  },
+  "false_positives": [
+    {
+      "path": "E:\\赛道5\\data\\sid_subset\\val\\real\\0_000574.jpg",
+      "label": 0,
+      "split": "val",
+      "pred": 0.988978184490214,
+      "pred_jpeg30": 0.9883208466175673
+    },
+    {
+      "path": "E:\\赛道5\\data\\sid_subset\\val\\real\\0_000673.jpg",
+      "label": 0,
+      "split": "val",
+      "pred": 0.9742332155233664,
+      "pred_jpeg30": 0.9789588326458155
+    },
+    {
+      "path": "E:\\赛道5\\data\\sid_subset\\val\\real\\0_000441.jpg",
+      "label": 0,
+      "split": "val",
+      "pred": 0.9730171471302883,
+      "pred_jpeg30": 0.9937097500446062
+    },
+    {
+      "path": "E:\\赛道5\\data\\sid_subset\\val\\real\\0_000506.jpg",
+      "label": 0,
+      "split": "val",
+      "pred": 0.9726101229318119,
+      "pred_jpeg30": 0.9932014009525515
+    },
+    {
+      "path": "E:\\赛道5\\data\\sid_subset\\val\\real\\0_000490.jpg",
+      "label": 0,
+      "split": "val",
+      "pred": 0.9721489813207261,
+      "pred_jpeg30": 0.12980506140052164
+    },
+    {
+      "path": "E:\\赛道5\\data\\sid_subset\\val\\real\\0_000328.jpg",
+      "label": 0,
+      "split": "val",
+      "pred": 0.9705067775920619,
+      "pred_jpeg30": 0.9549824208233388
+    },
+    {
+      "path": "E:\\赛道5\\data\\sid_subset\\val\\real\\0_000600.jpg",
+      "label": 0,
+      "split": "val",
+      "pred": 0.9676362891315092,
+      "pred_jpeg30": 0.8319390464335438
+    },
+    {
+      "path": "E:\\赛道5\\data\\sid_subset\\val\\real\\0_000713.jpg",
+      "label": 0,
+      "split": "val",
+      "pred": 0.9627743513360245,
+      "pred_jpeg30": 0.9959499517418814
+    }
+  ],
+  "false_negatives": [
+    {
+      "path": "E:\\赛道5\\data\\sid_subset\\val\\aigc\\2_000364.jpg",
+      "label": 1,
+      "split": "val",
+      "pred": 5.901804077110358e-06,
+      "pred_jpeg30": 4.6526522596738265e-05
+    },
+    {
+      "path": "E:\\赛道5\\data\\sid_subset\\val\\aigc\\2_000116.jpg",
+      "label": 1,
+      "split": "val",
+      "pred": 0.00024219325223343157,
+      "pred_jpeg30": 0.000722629046151824
+    },
+    {
+      "path": "E:\\赛道5\\data\\sid_subset\\val\\aigc\\2_000118.jpg",
+      "label": 1,
+      "split": "val",
+      "pred": 0.006789635288063218,
+      "pred_jpeg30": 0.08291935741117741
+    },
+    {
+      "path": "E:\\赛道5\\data\\sid_subset\\val\\aigc\\2_000277.jpg",
+      "label": 1,
+      "split": "val",
+      "pred": 0.017919570275081398,
+      "pred_jpeg30": 0.015831179118596037
+    },
+    {
+      "path": "E:\\赛道5\\data\\sid_subset\\val\\aigc\\2_000380.jpg",
+      "label": 1,
+      "split": "val",
+      "pred": 0.03227900599261911,
+      "pred_jpeg30": 0.29045512846782984
+    },
+    {
+      "path": "E:\\赛道5\\data\\sid_subset\\val\\aigc\\1_000325.jpg",
+      "label": 1,
+      "split": "val",
+      "pred": 0.0370179995355522,
+      "pred_jpeg30": 0.15905181212457634
+    },
+    {
+      "path": "E:\\赛道5\\data\\sid_subset\\val\\aigc\\2_000290.jpg",
+      "label": 1,
+      "split": "val",
+      "pred": 0.05090317547465949,
+      "pred_jpeg30": 0.14392679810216483
+    },
+    {
+      "path": "E:\\赛道5\\data\\sid_subset\\val\\aigc\\2_000343.jpg",
+      "label": 1,
+      "split": "val",
+      "pred": 0.05459228742469968,
+      "pred_jpeg30": 0.36582856251992685
+    }
+  ],
+  "note": "FP: authentic images scored as AIGC (creator harm). FN: generated images missed, especially after JPEG-30."
+}

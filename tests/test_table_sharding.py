@@ -62,8 +62,13 @@ class MergeTests(unittest.TestCase):
         self.assertEqual([r["transform"] for r in rows], ["clean", "jpeg_30"])
 
     def test_unknown_transform_is_rejected(self):
-        with self.assertRaises(ValueError):
-            evaluate_robustness(max_images=2, transforms=["clean", "jpeg_31"])
+        with tempfile.TemporaryDirectory() as td:
+            dest = Path(td) / "table.csv"
+            with self.assertRaises(ValueError):
+                evaluate_robustness(max_images=2, table_path=dest, transforms=["clean", "jpeg_31"])
+            # The rejection must happen before the destination is opened, so a bad call
+            # cannot truncate an existing results table.
+            self.assertFalse(dest.exists())
 
 
 if __name__ == "__main__":

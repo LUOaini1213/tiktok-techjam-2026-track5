@@ -126,6 +126,17 @@ def evaluate_robustness(
     if use_tta is None:
         use_tta = bool(meta.get("use_tta", cfg["use_tta"]))
 
+    presets = EVAL_PRESETS
+    if transforms:
+        wanted = set(transforms)
+        unknown = wanted - {n for n, _, _ in EVAL_PRESETS}
+        if unknown:
+            raise ValueError(f"Unknown transform(s): {sorted(unknown)}")
+        presets = [p for p in EVAL_PRESETS if p[0] in wanted]
+
+    # Opened with "w" below, which truncates. Everything that can reject the call --
+    # bad transform names, a missing model, an empty slice -- has to happen first, or a
+    # failed run destroys the previous table.
     dest = Path(table_path) if table_path else cfg["results_dir"] / "robustness_table.csv"
     dest.parent.mkdir(parents=True, exist_ok=True)
 
@@ -133,13 +144,6 @@ def evaluate_robustness(
     with dest.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-        presets = EVAL_PRESETS
-        if transforms:
-            wanted = set(transforms)
-            unknown = wanted - {n for n, _, _ in EVAL_PRESETS}
-            if unknown:
-                raise ValueError(f"Unknown transform(s): {sorted(unknown)}")
-            presets = [p for p in EVAL_PRESETS if p[0] in wanted]
         for name, op, param in presets:
             y_true = []
             scores = []

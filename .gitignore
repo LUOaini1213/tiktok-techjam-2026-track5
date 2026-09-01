@@ -30,6 +30,7 @@ results/*.json
 
 # sharded eval scratch + run logs
 results/_parts/
+results/_probe/
 artifacts/_extra/
 results/_ab_demo_parts/
 results/_ab_parts/
@@ -46,3 +47,7 @@ preds.json
 
 # os
 Thumbs.db
+
+# A/B candidate bundles (the winner is promoted to repostguard.joblib)
+artifacts/repostguard_*.joblib
+!artifacts/repostguard.joblib

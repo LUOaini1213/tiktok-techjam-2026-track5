@@ -11,7 +11,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from src.augment import center_crop, gaussian_blur, jpeg_compress
+from src.augment import center_crop, gaussian_blur, gaussian_noise, jpeg_compress
 from src.config import load_config, model_path
 from src.features import DEFAULT_FEATURE_VARIANT, embed_one
 from src.model import load_bundle, predict_proba
@@ -27,7 +27,9 @@ def load_weights():
     META = BUNDLE.get("meta", {})
 
 
-def score_image(image: Image.Image, jpeg_q: int, blur_sigma: float, crop_ratio: float) -> tuple:
+def score_image(
+    image: Image.Image, jpeg_q: int, blur_sigma: float, noise_sigma: float, crop_ratio: float
+) -> tuple:
     if image is None:
         return "Upload an image", 0.0, image
     if BUNDLE is None:
@@ -37,6 +39,8 @@ def score_image(image: Image.Image, jpeg_q: int, blur_sigma: float, crop_ratio: 
         work = jpeg_compress(work, int(jpeg_q))
     if blur_sigma > 0:
         work = gaussian_blur(work, float(blur_sigma))
+    if noise_sigma > 0:
+        work = gaussian_noise(work, float(noise_sigma))
     if crop_ratio < 1.0:
         work = center_crop(work, float(crop_ratio))
     feat = embed_one(
@@ -65,6 +69,7 @@ def main() -> None:
             gr.Image(type="pil", label="Image"),
             gr.Slider(30, 100, value=100, step=1, label="JPEG quality (100 = skip)"),
             gr.Slider(0, 2.0, value=0, step=0.1, label="Gaussian blur σ"),
+            gr.Slider(0, 0.10, value=0, step=0.01, label="Gaussian noise σ (0 = skip)"),
             gr.Slider(0.5, 1.0, value=1.0, step=0.05, label="Center crop ratio"),
         ],
         outputs=[

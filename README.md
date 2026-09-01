@@ -13,7 +13,7 @@ AIGC detectors that look strong on clean lab images often collapse after a TikTo
 - **Test-time augmentation (TTA).** Inference averages the original view with a JPEG-70 view and a 0.5× down/up view; the averaged CLIP embedding is re-L2-normalized so its scale does not depend on the view count. Train, eval, and infer all go through the **same** `embed_for_score` path so cached features match scored features exactly.
 - **Sigmoid calibration.** After the head is fit, we sigmoid-calibrate it on a group-disjoint 30% slice of the validation set and report metrics only on the held-out 70% test slice, so `pred` is a usable P(AIGC) probability rather than a raw margin.
 
-**Training data:** SID-Set (`saberzl/SID_Set`) binary labels: `0` real vs `1` AIGC-positive (`1` full-synthetic **and** `2` tampered, upweighted 5×). Official JPEG/blur/resize views plus clean/degraded consistency rows. The official WildFake demonstration subset is **never used for training** — it is only a reference benchmark (see below).
+**Training data:** SID-Set (`saberzl/SID_Set`) binary labels: `0` real vs `1` AIGC-positive (`1` full-synthetic **and** `2` tampered, upweighted 5×). Official JPEG/blur/resize/**noise** views plus clean/degraded consistency rows — 5 views per image. The noise view was added after the robustness table showed it was the one official family the model had never trained on (see *Closing the augmentation gap* below). The official WildFake demonstration subset is **never used for training** — it is only a reference benchmark (see below).
 
 ## Problem-statement alignment
 
@@ -38,11 +38,14 @@ python scripts/make_samples.py                              :: tiny fixtures
 python scripts/download_data.py --train_per_class 2000 --val_per_class 1000
 python scripts/extract_features.py --split train --augment  :: caches BOTH CLIP variants
 python scripts/extract_features.py --split val
-python scripts/train.py                                     :: A/B CV, calibrate, write bundle
+python scripts/extract_extra_view.py --family noise --split train --shard 0/1 --out artifacts/_extra/noise.npz
+python scripts/extract_extra_view.py --merge artifacts/_extra/noise.npz --out artifacts/features_train_noise.npz
+python scripts/train.py --extra_features artifacts/features_train_noise.npz   :: A/B CV, calibrate, write bundle
 python scripts/make_tables.py                               :: robustness table + CIs
 python scripts/make_chart.py                                :: robustness bar chart PNG
 python scripts/error_analysis.py                            :: FP/FN note
 python scripts/eval_demo.py                                 :: WildFake demonstration benchmark
+python scripts/compare_ab.py                                :: A/B vs results/baseline/
 python scripts/update_readme.py                             :: fill the README result sections
 python infer.py --input_dir samples --output preds.json     :: required submission command
 python app.py                                               :: optional Gradio demo
@@ -87,12 +90,50 @@ Clean vs each Track-5 transform on the held-out validation **test** slice (calib
 ![Robustness: clean vs social-media transforms](results/robustness_chart.png)
 <!-- /ROBUSTNESS_TABLE -->
 
+### Closing the augmentation gap
+
+The table above is also how we found our own worst bug. Our evaluation grid has six
+official transform families, but `multi_paired_official_views` only ever cached four
+views per training image: clean, JPEG, blur, resize. **`noise`, `jitter` and `crop` were
+scored but never trained on** — and they came back as three of our weakest rows, with
+`noise_0.10` collapsing to 0.8117 AUC while every trained family held above 0.94.
+
+So we added a fifth training view. `scripts/extract_extra_view.py` embeds one extra
+augmentation-family view per training image and reuses the four already cached, so the
+fix cost ~4k CLIP forwards rather than a full re-extraction; `train.py --extra_features`
+folds it into each image's view block (inside the block, not appended — `source_groups`
+derives CV groups positionally, so appending would split an image across GroupKFold folds
+and leak). Refitting takes about a minute.
+
+Scored on the identical held-out slice, decided before promotion:
+
+| | clean AUC | `noise_0.10` AUC | `noise_0.10` 95% CI |
+|---|---:|---:|---|
+| 4 views (jpeg/blur/resize) | 0.9634 | 0.8164 | [0.7720, 0.8585] |
+| **5 views (+ noise)** | **0.9629** | **0.9823** | **[0.9696, 0.9925]** |
+
+**+0.166 AUC on the collapsing transform, with non-overlapping confidence intervals, and
+clean AUC unchanged within noise (−0.0005).** Full per-transform deltas against the
+pre-change head (`results/baseline/`):
+
+<!-- AB_TABLE -->
+_(not generated yet -- run the pipeline in 'Steps to reproduce results'.)_
+<!-- /AB_TABLE -->
+
+
 ## WildFake demonstration benchmark (never used in training)
 
 The official demonstration subset (`techjam-aigc/wildfake-eval-subset`, `default` config = COCO val2017 reals + DALL·E-3 Advanced fakes) scored through the **shipped** inference path on a balanced subsample. This measures cross-source generalization to a generator family absent from SID-Set training. Full table: `results/demo_benchmark.csv`.
 
 <!-- DEMO_TABLE -->
-_(not generated yet -- run the pipeline in 'Steps to reproduce results'.)_
+| Transform | n | Accuracy | ROC AUC | 95% CI |
+|---|---:|---:|---:|---|
+| `clean` | 2000 | 0.8530 | 0.9187 | [0.9061, 0.9302] |
+| `jpeg_30` | 2000 | 0.8185 | 0.9133 | [0.9012, 0.9247] |
+| `resize_0.25` | 2000 | 0.7165 | 0.7925 | [0.7721, 0.8122] |
+| `noise_0.05` | 2000 | 0.7260 | 0.8532 | [0.8360, 0.8690] |
+
+**Cross-source clean AUC 0.9187 on 2000 balanced images from a generator family (DALL-E-3) absent from SID-Set training** -- an out-of-distribution check, not a tuning target.
 <!-- /DEMO_TABLE -->
 
 ## Error analysis note
@@ -100,7 +141,14 @@ _(not generated yet -- run the pipeline in 'Steps to reproduce results'.)_
 Representative false positives (authentic images flagged AIGC — creator harm), false negatives (generated images missed, especially after JPEG-30), and the score drift under JPEG-30, in `results/error_analysis.json` (`scripts/error_analysis.py`).
 
 <!-- ERROR_ANALYSIS -->
-_(not generated yet -- run the pipeline in 'Steps to reproduce results'.)_
+On the held-out test slice (1400 images: 720 real, 680 AIGC) at the shipped 0.5 threshold:
+
+- **False positives** (authentic flagged AIGC -- direct creator harm): 93/720 = **12.92% FPR**.
+- **False negatives** (generated images missed): 44/680 = **6.47% FNR**.
+- **FPR@95%TPR**: 16.94% clean, 21.81% after JPEG-30 -- the price in flagged authentic images if the product insisted on catching 95% of AIGC.
+- **JPEG-30 score drift**: real +0.0314, AIGC +0.0055 mean change in P(AIGC); 53 real images flip into false positives and 16 AIGC images flip into false negatives. AUC 0.9634 clean vs 0.9547 after JPEG-30.
+
+The `k` highest-scoring FPs and lowest-scoring FNs, with their per-image clean and JPEG-30 scores, are in `results/error_analysis.json`.
 <!-- /ERROR_ANALYSIS -->
 
 **Trade-offs.** We keep the decision threshold at 0.5 and report FPR@95%TPR so the creator-harm cost of false positives is explicit. The tampered-class upweight raises recall on locally-edited images at some cost to clean precision. TTA recovers part of the transform-induced AUC drop but triples inference cost per image.
@@ -113,13 +161,15 @@ _(not generated yet -- run the pipeline in 'Steps to reproduce results'.)_
 | Pre- vs projected CLIP, chosen by CV | Pre-projection usually wins for fake detection; we verify rather than assume |
 | Native-resolution forensic branch | CLIP loses high-frequency traces; a 128×128 downscale aliases them away |
 | Train-time official augmentations | Aligns the classifier with redistribution, not just clean SID-Set |
+| Every scored transform family is also a training view | The families we scored but never trained on were measurably our weakest rows; adding the noise view lifted `noise_0.10` AUC by +0.166 |
 | TTA (clean + JPEG-70 + 0.5×) | Recovers part of the transform-induced drop the table is scored on |
 | Sigmoid calibration on held-out val | `pred` is a usable probability, evaluated without calibration leakage |
 
 ## Limitations & what we would improve with more time
 
 - **Generator diversity.** Trained on SID-Set only. Unknown commercial generators (Flux, Midjourney v7, SD3) still shift CLIP geometry. The listed resources (CIFAKE, WildFake-train) are allowed for training and would be the first addition — mixing generator families is the highest-leverage next step.
-- **Hardest rows.** Extreme 0.25× thumbnails and JPEG-30 remain the weakest transforms; a small learned frequency head or a second forensic scale could help.
+- **Remaining untrained families.** `jitter` and `crop` are still scored but not training views. Their feature caches are already extracted (`scripts/extract_extra_view.py --family jitter|crop`); we ran out of clock to evaluate that candidate, so we shipped the one variant we could verify end-to-end rather than an unmeasured one.
+- **Hardest rows.** Extreme 0.25× thumbnails remain the weakest transform; a small learned frequency head or a second forensic scale could help.
 - **Local edits / face swaps** are only partially covered (tampered class upweight); a dedicated localization branch is out of scope here.
 - **Scale.** We trained on a 2000/class subset for the deadline; `configs/default.yaml` targets 8000/class on a CUDA box (see below).
 - **False positives on heavily filtered real photos** hurt creators; a per-creator threshold or an abstain band would reduce that harm.

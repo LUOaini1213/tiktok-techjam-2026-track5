@@ -1,0 +1,2 @@
+transform,n,acc,auc,auc_lo,auc_hi
+noise_0.10,400,0.9125,0.9823,0.9696,0.9925

@@ -40,13 +40,46 @@ https://github.com/LUOaini1213/tiktok-techjam-2026-track5
 
 ## 5. Video demo link（演示视频）
 
-> ⚠️ **这一项还不能填 —— 视频已生成但尚未上传 YouTube。**
-> 文件在 `build/track5_demo.mp4`（3:00，1920×1080，含 `build/track5_demo.srt` 字幕）。
-> 上传后设为 **公开（Public）** 或 **不公开列出（Unlisted）**，把链接贴到这里：
+```
+https://youtu.be/wbeGLieLZ9c
+```
 
-```
-https://youtu.be/__________
-```
+> ✅ 已确认可公开访问（标题 "track5 demo"，频道 WENJI LUO）。
+>
+> **建议顺手改两处**（公众投票 9/1–9/4 期间这条视频会被陌生人看到，目前标题是占位、描述为空）：
+>
+> YouTube 标题改成：
+>
+> ```
+> RepostGuard — AIGC Detection That Survives the Repost | TikTok TechJam 2026 Track 5
+> ```
+>
+> YouTube 描述粘贴：
+>
+> ```
+> RepostGuard detects AI-generated images after a real-world repost: JPEG re-encoding,
+> thumbnail resizing, blur, noise, colour jitter and cropping.
+>
+> Frozen CLIP ViT-B/32 (88M params, far under the 2B cap) + a native-resolution forensic
+> branch + a calibrated linear head. Runs on CPU.
+>
+> We found our own worst bug by measuring: our evaluation grid has six official transform
+> families but our training views had only four. Adding the missing noise view lifted
+> worst-case AUC from 0.8117 to 0.9479 (+0.1362), with non-overlapping bootstrap
+> confidence intervals and clean AUC unchanged.
+>
+> Code, full 15-transform robustness table, A/B deltas and error analysis:
+> https://github.com/LUOaini1213/tiktok-techjam-2026-track5
+>
+> 00:00 Problem
+> 00:15 Our Solution
+> 00:35 Architecture
+> 00:55 Live Demo
+> 02:20 Results
+> 02:45 Impact
+> ```
+>
+> 如果当初传的是「不公开列出 / Unlisted」，建议改成「公开 / Public」，公众投票期更容易被看到。
 
 ---
 
@@ -203,7 +236,7 @@ Those three noise rows are the only ones whose bootstrap confidence intervals mo
 |---|---|---|
 | `repostguard-track5-submission.zip` | 第 8 项上传 | `docs/` |
 | `01_results.png` ~ `05_tradeoff.png` | 第 9 项画廊 | `docs/video/gallery/` |
-| `track5_demo.mp4` + `.srt` | 先传 YouTube，拿到链接填第 5 项 | `build/` |
+| `track5_demo.mp4` + `.srt` | 已上传 YouTube，链接见第 5 项。字幕可在 YouTube 后台补传 | `build/` |
 
 ## 附：如果时间不够
 
@@ -212,8 +245,6 @@ Those three noise rows are the only ones whose bootstrap confidence intervals mo
 1. Track + Project name + 仓库链接 + About 正文 → **先点提交**
 2. 视频链接、zip、图片、tags → Devpost 截止前可以继续编辑补上
 
-## 附：唯一的阻塞项
+## 附：状态
 
-**第 5 项视频链接必须先上传 YouTube。** 其余九项现在就能填完。
-视频文件已生成好：`build/track5_demo.mp4`（3:00，1920×1080，h264 + AAC，4.1 MB），
-字幕 `build/track5_demo.srt` 可在 YouTube 后台一并上传。
+**十项全部就绪，没有阻塞项。** 照着从第 1 项填到第 10 项，然后提交。

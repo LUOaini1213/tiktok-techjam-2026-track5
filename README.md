@@ -2,6 +2,8 @@
 
 TikTok TechJam 2026 Track 5 — **Robust Detection of AI-Generated Images Under Real-World Transformations**.
 
+**[Demo video (3 min)](https://youtu.be/wbeGLieLZ9c)** · [Robustness table](results/robustness_table.csv) · [A/B vs pre-change head](results/ab_summary.csv)
+
 AIGC detectors that look strong on clean lab images often collapse after a TikTok-style repost: JPEG re-encode, thumbnail resize, filter jitter, or avatar crop. RepostGuard is a hackathon-scale detector that treats those transforms as the actual test, not an afterthought.
 
 ## Project overview

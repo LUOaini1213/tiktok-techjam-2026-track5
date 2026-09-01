@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.augment import EVAL_PRESETS
 from src.eval_robustness import evaluate_robustness, merge_tables
+from tests.dataset_guard import needs_dataset
 
 FIELDS = ["transform", "n", "acc", "auc", "auc_lo", "auc_hi"]
 
@@ -50,6 +51,7 @@ class MergeTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 merge_tables(parts, td / "merged.csv")
 
+    @needs_dataset
     def test_transform_filter_scores_only_requested_rows(self):
         with tempfile.TemporaryDirectory() as td:
             dest = Path(td) / "part.csv"

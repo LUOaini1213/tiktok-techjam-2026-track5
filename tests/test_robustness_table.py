@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.eval_robustness import balanced_val_slice, evaluate_robustness
+from tests.dataset_guard import needs_dataset
 
 
 class RobustnessTableTests(unittest.TestCase):
@@ -22,6 +23,7 @@ class RobustnessTableTests(unittest.TestCase):
         self.assertEqual(labels, {0, 1})
         self.assertEqual(len(sliced), 4)
 
+    @needs_dataset
     def test_evaluate_robustness_writes_official_families(self):
         with tempfile.TemporaryDirectory() as td:
             dest = Path(td) / "robustness_table.csv"

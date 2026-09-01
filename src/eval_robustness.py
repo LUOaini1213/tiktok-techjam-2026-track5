@@ -107,6 +107,17 @@ def evaluate_robustness(
     transforms: list[str] | None = None,
     weights: Path | None = None,
 ) -> Path:
+    # Pure argument validation, before anything expensive or destructive: a typo should
+    # fail instantly rather than after a CLIP load, and must never reach the "w" open
+    # below that would truncate an existing table.
+    presets = EVAL_PRESETS
+    if transforms:
+        wanted = set(transforms)
+        unknown = wanted - {n for n, _, _ in EVAL_PRESETS}
+        if unknown:
+            raise ValueError(f"Unknown transform(s): {sorted(unknown)}")
+        presets = [p for p in EVAL_PRESETS if p[0] in wanted]
+
     cfg = load_config()
     bundle = load_bundle(weights or model_path(cfg))
     meta = bundle["meta"]
@@ -125,14 +136,6 @@ def evaluate_robustness(
 
     if use_tta is None:
         use_tta = bool(meta.get("use_tta", cfg["use_tta"]))
-
-    presets = EVAL_PRESETS
-    if transforms:
-        wanted = set(transforms)
-        unknown = wanted - {n for n, _, _ in EVAL_PRESETS}
-        if unknown:
-            raise ValueError(f"Unknown transform(s): {sorted(unknown)}")
-        presets = [p for p in EVAL_PRESETS if p[0] in wanted]
 
     # Opened with "w" below, which truncates. Everything that can reject the call --
     # bad transform names, a missing model, an empty slice -- has to happen first, or a

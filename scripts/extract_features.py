@@ -30,7 +30,7 @@ from src.augment import multi_paired_official_views
 from src.config import load_config
 from src.data import records_from_folders
 from src.features import FEATURE_VARIANTS, get_device
-from src.io_utils import open_image
+from src.io_utils import enable_utf8_stdout, open_image
 from src.score import embed_for_score_dual
 from src.train_signal import sid_label_from_path
 
@@ -166,6 +166,7 @@ def extract_split(cfg, split: str, augment: bool, checkpoint_every: int = 150) -
 
 
 def main() -> None:
+    enable_utf8_stdout()
     args = parse_args()
     cfg = load_config()
     splits = ["train", "val"] if args.split == "both" else [args.split]

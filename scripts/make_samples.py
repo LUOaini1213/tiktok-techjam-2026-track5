@@ -11,8 +11,11 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from src.io_utils import enable_utf8_stdout
+
 
 def main() -> None:
+    enable_utf8_stdout()
     out = ROOT / "samples"
     out.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(2026)

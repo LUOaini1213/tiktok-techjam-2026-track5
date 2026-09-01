@@ -11,9 +11,11 @@ sys.path.insert(0, str(ROOT))
 
 from infer import score_directory
 from src.config import load_config
+from src.io_utils import enable_utf8_stdout
 
 
 def main() -> None:
+    enable_utf8_stdout()
     cfg = load_config()
     folder = cfg["data_dir"] / "val" / "aigc"
     out = cfg["results_dir"] / "tampered_scores.json"

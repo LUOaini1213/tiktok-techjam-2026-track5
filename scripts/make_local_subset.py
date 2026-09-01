@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.config import load_config
+from src.io_utils import enable_utf8_stdout
 from src.data import LABEL_AIGC, LABEL_REAL, save_split, write_image
 
 
@@ -68,6 +69,7 @@ def build(out_dir: Path, train_n: int, val_n: int, seed: int) -> dict:
 
 
 def main() -> None:
+    enable_utf8_stdout()
     p = argparse.ArgumentParser()
     p.add_argument("--train_per_class", type=int, default=64)
     p.add_argument("--val_per_class", type=int, default=16)

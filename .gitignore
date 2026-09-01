@@ -25,6 +25,17 @@ results/*.json
 !results/error_analysis.json
 !results/.gitkeep
 
+# local tool state
+.claude/settings.local.json
+
+# sharded eval scratch + run logs
+results/_parts/
+artifacts/_extra/
+results/_ab_demo_parts/
+results/_ab_parts/
+results/_demo_parts/
+logs/
+
 # notebooks / caches
 .cache/
 *.ipynb_checkpoints/

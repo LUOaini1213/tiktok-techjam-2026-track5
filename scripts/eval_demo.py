@@ -31,6 +31,7 @@ from src.augment import apply_named
 from src.config import load_config, model_path
 from src.eval_robustness import stratified_bootstrap_auc_ci
 from src.features import DEFAULT_FEATURE_VARIANT
+from src.io_utils import enable_utf8_stdout
 from src.io_utils import open_image  # noqa: F401  (kept for parity / future file inputs)
 from src.model import load_bundle
 from src.score import embed_for_score, score_from_embed
@@ -62,7 +63,46 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Only fill the local cache (network phase); skip scoring",
     )
+    p.add_argument(
+        "--transforms",
+        type=str,
+        default=None,
+        help="Comma-separated DEMO_TRANSFORMS names to score (default: all)",
+    )
+    p.add_argument("--out", type=Path, default=None, help="Write this CSV instead of results/demo_benchmark.csv")
+    p.add_argument(
+        "--merge",
+        nargs="+",
+        type=Path,
+        default=None,
+        help="Merge these part CSVs into results/demo_benchmark.csv and exit",
+    )
     return p.parse_args()
+
+
+FIELDS = ["transform", "n", "acc", "auc", "auc_lo", "auc_hi"]
+
+
+def merge_parts(parts, dest: Path) -> Path:
+    """Merge sharded demo CSVs in DEMO_TRANSFORMS order (sharding is a CPU trick only)."""
+    order = [n for n, _, _ in DEMO_TRANSFORMS]
+    seen = {}
+    for part in parts:
+        if not Path(part).exists():
+            continue
+        with Path(part).open(newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                seen[row["transform"]] = row
+    missing = [n for n in order if n not in seen]
+    if missing:
+        raise SystemExit(f"Merged demo table incomplete, missing: {missing}")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with dest.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=FIELDS)
+        w.writeheader()
+        for name in order:
+            w.writerow(seen[name])
+    return dest
 
 
 def _cache_paths(cache_dir: Path, per_class: int) -> dict[int, list[Path]]:
@@ -125,9 +165,15 @@ def load_balanced(per_class: int, seed: int, cache_dir: Path) -> list[tuple[Imag
 
 
 def main() -> None:
+    enable_utf8_stdout()
     args = parse_args()
     cfg = load_config()
     cache_dir = args.cache_dir or (cfg["root"] / "data" / "demo_subset")
+
+    if args.merge:
+        dest = args.out or (cfg["results_dir"] / "demo_benchmark.csv")
+        print(f"Wrote {merge_parts(args.merge, dest)}")
+        return
 
     if args.fetch_only:
         fill_cache(cache_dir, args.per_class)
@@ -142,10 +188,17 @@ def main() -> None:
     if not samples:
         raise SystemExit("No demo samples loaded -- skip demo eval.")
 
-    dest = cfg["results_dir"] / "demo_benchmark.csv"
+    dest = args.out or (cfg["results_dir"] / "demo_benchmark.csv")
     dest.parent.mkdir(parents=True, exist_ok=True)
+    todo = DEMO_TRANSFORMS
+    if args.transforms:
+        wanted = {t.strip() for t in args.transforms.split(",")}
+        unknown = wanted - {n for n, _, _ in DEMO_TRANSFORMS}
+        if unknown:
+            raise SystemExit(f"Unknown demo transform(s): {sorted(unknown)}")
+        todo = [t for t in DEMO_TRANSFORMS if t[0] in wanted]
     rows_out = []
-    for name, op, param in DEMO_TRANSFORMS:
+    for name, op, param in todo:
         y_true, scores = [], []
         for img, label in samples:
             view = apply_named(img, op, param)
@@ -181,7 +234,7 @@ def main() -> None:
         )
 
     with dest.open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=["transform", "n", "acc", "auc", "auc_lo", "auc_hi"])
+        w = csv.DictWriter(f, fieldnames=FIELDS)
         w.writeheader()
         w.writerows(rows_out)
     print(f"Wrote {dest}")

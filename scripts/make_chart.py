@@ -14,9 +14,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.config import load_config
+from src.io_utils import enable_utf8_stdout
 
 
 def main() -> None:
+    enable_utf8_stdout()
     cfg = load_config()
     src = cfg["results_dir"] / "robustness_table.csv"
     if not src.exists():

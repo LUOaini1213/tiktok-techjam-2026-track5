@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.config import load_config, model_path
+from src.io_utils import enable_utf8_stdout
 from src.features import FEATURE_VARIANTS, feature_dim_for_variant
 from src.model import save_bundle
 from src.train_signal import fit_with_training_signal, positive_proba
@@ -38,6 +39,19 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--cv_splits", type=int, default=5)
     p.add_argument("--cal_frac", type=float, default=0.30, help="Group-disjoint val fraction for calibration")
     p.add_argument("--no_calibrate", action="store_true")
+    p.add_argument(
+        "--extra_features",
+        nargs="+",
+        type=Path,
+        default=None,
+        help="Extra 1-view-per-image caches (scripts/extract_extra_view.py) to merge into each image's view block",
+    )
+    p.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="Write the bundle here instead of artifacts/repostguard.joblib (A/B runs)",
+    )
     return p.parse_args()
 
 
@@ -56,6 +70,51 @@ def load_npz(path: Path):
     sid = data["sid"] if "sid" in files else np.zeros(len(y), dtype=np.int64)
     vpi = int(data["views_per_image"][0]) if "views_per_image" in files else 1
     return Xs, y, sid, vpi
+
+
+def merge_extra_views(Xs, y, sid, vpi, extra_paths):
+    """Fold 1-view-per-image caches into each image's contiguous view block.
+
+    `source_groups` derives CV groups from position (`row // views_per_image`), so extra
+    views cannot simply be appended at the end -- they must land inside their own image's
+    block. Extra caches are written in the same image order as features_train.npz, so a
+    reshape to (n_images, views, dim) and a concat along the view axis is exact.
+    """
+    n_img, rem = divmod(len(y), vpi)
+    if rem:
+        raise SystemExit(f"features_train.npz has {len(y)} rows, not a multiple of views_per_image={vpi}")
+    blocks = {v: Xs[v].reshape(n_img, vpi, -1) for v in Xs}
+    y_b = y.reshape(n_img, vpi)
+    sid_b = sid.reshape(n_img, vpi)
+
+    for path in extra_paths:
+        Xe, ye, side, vpe = load_npz(path)
+        n_e, rem_e = divmod(len(ye), vpe)
+        if rem_e or n_e != n_img:
+            raise SystemExit(f"{path}: covers {n_e} images, base cache has {n_img} -- re-extract")
+        missing = [v for v in blocks if v not in Xe]
+        if missing:
+            raise SystemExit(f"{path}: missing feature variant(s) {missing}")
+        for v in blocks:
+            if Xe[v].shape[1] != blocks[v].shape[2]:
+                raise SystemExit(
+                    f"{path}: variant {v} is {Xe[v].shape[1]}-D but base cache is {blocks[v].shape[2]}-D"
+                )
+            blocks[v] = np.concatenate([blocks[v], Xe[v].reshape(n_img, vpe, -1)], axis=1)
+        y_e = ye.reshape(n_img, vpe)
+        if not (y_e == y_b[:, :1]).all():
+            raise SystemExit(f"{path}: labels do not line up with the base cache -- image order differs")
+        y_b = np.concatenate([y_b, y_e], axis=1)
+        sid_b = np.concatenate([sid_b, side.reshape(n_img, vpe)], axis=1)
+        print(f"merged {path.name}: +{vpe} view/image")
+
+    new_vpi = y_b.shape[1]
+    return (
+        {v: blocks[v].reshape(n_img * new_vpi, -1) for v in blocks},
+        y_b.reshape(-1),
+        sid_b.reshape(-1),
+        new_vpi,
+    )
 
 
 def fpr_at_tpr(y_true, scores, target_tpr=0.95) -> float:
@@ -130,6 +189,7 @@ def calibrate(model, X_cal, y_cal):
 
 
 def main() -> None:
+    enable_utf8_stdout()
     args = parse_args()
     cfg = load_config()
     train_path = cfg["artifacts_dir"] / "features_train.npz"
@@ -138,6 +198,11 @@ def main() -> None:
         raise SystemExit("Run scripts/extract_features.py --split train --augment first")
 
     Xtr, ytr, sidtr, vpi = load_npz(train_path)
+    extra_names = []
+    if args.extra_features:
+        Xtr, ytr, sidtr, vpi = merge_extra_views(Xtr, ytr, sidtr, vpi, args.extra_features)
+        extra_names = [Path(p).name for p in args.extra_features]
+        print(f"views_per_image now {vpi} ({len(ytr)} train rows)")
     groups = source_groups(len(ytr), vpi)
 
     # ---- A/B: GroupKFold CV AUC per variant ----
@@ -243,13 +308,15 @@ def main() -> None:
             "Paired official degradations + consistency means. Tampered rows upweighted. "
             "Features via embed_for_score TTA. WildFake unused."
         ),
+        "extra_view_caches": extra_names,
         "score_path": "embed_for_score",
         "use_tta_for_fit": True,
         "tampered_weight": 5.0,
     }
-    out = model_path(cfg)
+    out = args.out or model_path(cfg)
     save_bundle(out, calibrated_model, meta)
-    _write_weights_note(cfg, metrics, winner, calibration)
+    if args.out is None:  # A/B runs must not overwrite the shipped WEIGHTS.txt note
+        _write_weights_note(cfg, metrics, winner, calibration)
     print(f"Wrote {out}")
 
 

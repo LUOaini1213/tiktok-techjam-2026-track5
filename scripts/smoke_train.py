@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT))
 from src.augment import random_train_augment
 from src.config import load_config, model_path
 from src.features import DEFAULT_FEATURE_VARIANT, embed_one, feature_dim_for_variant
-from src.io_utils import list_images, open_image
+from src.io_utils import enable_utf8_stdout, list_images, open_image
 from src.model import fit_classifier, save_bundle
 
 # Smoke path skips CV A/B (only 2 images); default to the same pre-projection variant
@@ -23,6 +23,7 @@ SMOKE_VARIANT = DEFAULT_FEATURE_VARIANT
 
 
 def main() -> None:
+    enable_utf8_stdout()
     cfg = load_config()
     paths = list_images(ROOT / "samples")
     if len(paths) < 2:

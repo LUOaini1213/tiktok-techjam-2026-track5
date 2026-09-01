@@ -71,14 +71,44 @@ def stratified_bootstrap_auc_ci(
     return float(lo), float(hi)
 
 
+def merge_tables(parts: list[Path], dest: Path) -> Path:
+    """Merge sharded robustness CSVs back into one table in EVAL_PRESETS order.
+
+    Sharding exists only to use more than one CPU core: every row is produced by the
+    identical code path, so a merged table is byte-identical to a single-process run.
+    """
+    order = [name for name, _, _ in EVAL_PRESETS]
+    seen: dict[str, dict] = {}
+    for part in parts:
+        if not Path(part).exists():
+            continue
+        with Path(part).open(newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                seen[row["transform"]] = row
+    missing = [n for n in order if n not in seen]
+    if missing:
+        raise RuntimeError(f"Merged table is incomplete, missing transforms: {missing}")
+
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with dest.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["transform", "n", "acc", "auc", "auc_lo", "auc_hi"])
+        writer.writeheader()
+        for name in order:
+            writer.writerow(seen[name])
+    return dest
+
+
 def evaluate_robustness(
     max_images: int | None = None,
     use_tta: bool | None = None,
     table_path: Path | None = None,
     bootstrap_reps: int = 2000,
+    transforms: list[str] | None = None,
+    weights: Path | None = None,
 ) -> Path:
     cfg = load_config()
-    bundle = load_bundle(model_path(cfg))
+    bundle = load_bundle(weights or model_path(cfg))
     meta = bundle["meta"]
     variant = meta.get("feature_variant", DEFAULT_FEATURE_VARIANT)
     rows = [r for r in records_from_folders(cfg["data_dir"]) if r["split"] == "val"]
@@ -103,7 +133,14 @@ def evaluate_robustness(
     with dest.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-        for name, op, param in EVAL_PRESETS:
+        presets = EVAL_PRESETS
+        if transforms:
+            wanted = set(transforms)
+            unknown = wanted - {n for n, _, _ in EVAL_PRESETS}
+            if unknown:
+                raise ValueError(f"Unknown transform(s): {sorted(unknown)}")
+            presets = [p for p in EVAL_PRESETS if p[0] in wanted]
+        for name, op, param in presets:
             y_true = []
             scores = []
             for row in tqdm(rows, desc=name):

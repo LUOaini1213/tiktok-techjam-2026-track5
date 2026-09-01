@@ -43,6 +43,7 @@ python scripts/make_tables.py                               :: robustness table 
 python scripts/make_chart.py                                :: robustness bar chart PNG
 python scripts/error_analysis.py                            :: FP/FN note
 python scripts/eval_demo.py                                 :: WildFake demonstration benchmark
+python scripts/update_readme.py                             :: fill the README result sections
 python infer.py --input_dir samples --output preds.json     :: required submission command
 python app.py                                               :: optional Gradio demo
 ```
@@ -63,21 +64,44 @@ Output JSON:
 Clean vs each Track-5 transform on the held-out validation **test** slice (calibration images excluded), with 95% stratified-bootstrap AUC confidence intervals. Full machine-readable table: `results/robustness_table.csv`; chart: `results/robustness_chart.png`.
 
 <!-- ROBUSTNESS_TABLE -->
-_(populated by `scripts/make_tables.py` after training; see `results/robustness_table.csv`.)_
+| Transform | n | Accuracy | ROC AUC | 95% CI |
+|---|---:|---:|---:|---|
+| `clean` | 1400 | 0.9021 | 0.9634 | [0.9540, 0.9719] |
+| `jpeg_90` | 1400 | 0.9093 | 0.9674 | [0.9587, 0.9755] |
+| `jpeg_70` | 1400 | 0.9157 | 0.9728 | [0.9649, 0.9796] |
+| `jpeg_50` | 1400 | 0.9107 | 0.9682 | [0.9597, 0.9758] |
+| `jpeg_30` | 1400 | 0.8764 | 0.9547 | [0.9446, 0.9642] |
+| `blur_0.5` | 1400 | 0.8986 | 0.9618 | [0.9523, 0.9706] |
+| `blur_1.0` | 1400 | 0.8629 | 0.9567 | [0.9464, 0.9660] |
+| `blur_2.0` | 1400 | 0.8707 | 0.9500 | [0.9388, 0.9605] |
+| `resize_0.5` | 1400 | 0.8650 | 0.9567 | [0.9464, 0.9662] |
+| `resize_0.25` | 1400 | 0.8679 | 0.9455 | [0.9338, 0.9564] |
+| `noise_0.02` | 1400 | 0.8714 | 0.9244 | [0.9095, 0.9381] |
+| `noise_0.05` | 1400 | 0.8164 | 0.8851 | [0.8669, 0.9025] |
+| `noise_0.10` | 1400 | 0.6529 | 0.8117 | [0.7879, 0.8339] |
+| `jitter_0.20` | 1400 | 0.8714 | 0.9362 | [0.9230, 0.9483] |
+| `crop_0.80` | 1400 | 0.8850 | 0.9521 | [0.9418, 0.9620] |
+
+**Clean AUC 0.9634; mean AUC across the 14 transformed conditions 0.9388 (-0.0246 vs clean); worst condition `noise_0.10` at 0.8117 (-0.1517 vs clean).** Every row is the same held-out test slice (1400 images, calibration images excluded) re-scored through the shipped inference path after the transform, so clean and transformed numbers are directly comparable.
+
+![Robustness: clean vs social-media transforms](results/robustness_chart.png)
+<!-- /ROBUSTNESS_TABLE -->
 
 ## WildFake demonstration benchmark (never used in training)
 
 The official demonstration subset (`techjam-aigc/wildfake-eval-subset`, `default` config = COCO val2017 reals + DALL·E-3 Advanced fakes) scored through the **shipped** inference path on a balanced subsample. This measures cross-source generalization to a generator family absent from SID-Set training. Full table: `results/demo_benchmark.csv`.
 
 <!-- DEMO_TABLE -->
-_(populated by `scripts/eval_demo.py`.)_
+_(not generated yet -- run the pipeline in 'Steps to reproduce results'.)_
+<!-- /DEMO_TABLE -->
 
 ## Error analysis note
 
 Representative false positives (authentic images flagged AIGC — creator harm), false negatives (generated images missed, especially after JPEG-30), and the score drift under JPEG-30, in `results/error_analysis.json` (`scripts/error_analysis.py`).
 
 <!-- ERROR_ANALYSIS -->
-_(summary populated after training.)_
+_(not generated yet -- run the pipeline in 'Steps to reproduce results'.)_
+<!-- /ERROR_ANALYSIS -->
 
 **Trade-offs.** We keep the decision threshold at 0.5 and report FPR@95%TPR so the creator-harm cost of false positives is explicit. The tampered-class upweight raises recall on locally-edited images at some cost to clean precision. TTA recovers part of the transform-induced AUC drop but triples inference cost per image.
 

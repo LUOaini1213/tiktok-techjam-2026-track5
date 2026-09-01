@@ -50,9 +50,10 @@ def down_up_resize(image: Image.Image, scale: float) -> Image.Image:
     return small.resize((w, h), Image.BILINEAR)
 
 
-def gaussian_noise(image: Image.Image, sigma: float) -> Image.Image:
+def gaussian_noise(image: Image.Image, sigma: float, rng: np.random.Generator | None = None) -> Image.Image:
+    """Additive Gaussian noise. Pass `rng` for a reproducible draw (feature caching)."""
     arr = np.asarray(to_rgb(image), dtype=np.float32) / 255.0
-    rng = np.random.default_rng()
+    rng = rng or np.random.default_rng()
     noisy = arr + rng.normal(0.0, float(sigma), size=arr.shape)
     noisy = np.clip(noisy, 0.0, 1.0)
     return Image.fromarray((noisy * 255.0).astype(np.uint8), mode="RGB")

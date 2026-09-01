@@ -22,7 +22,7 @@ FALLBACK_PRED = 0.5
 
 from src.config import load_config, model_path
 from src.features import DEFAULT_FEATURE_VARIANT, feature_dim_for_variant
-from src.io_utils import list_images, open_image
+from src.io_utils import enable_utf8_stdout, list_images, open_image
 from src.model import load_bundle
 from src.score import embed_for_score, score_from_embed
 
@@ -114,6 +114,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    enable_utf8_stdout()
     args = parse_args()
     try:
         rows = score_directory(

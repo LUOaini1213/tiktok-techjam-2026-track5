@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.config import load_config
+from src.io_utils import enable_utf8_stdout
 from src.data import subsample_sid_streaming
 
 
@@ -27,6 +28,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    enable_utf8_stdout()
     args = parse_args()
     cfg = load_config()
     out_dir = args.out_dir or cfg["data_dir"]

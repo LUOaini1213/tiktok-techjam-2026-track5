@@ -1,0 +1,28 @@
+{
+  "real": {
+    "name": "0_000545.jpg",
+    "path": "E:\\\u8d5b\u90535\\data\\sid_subset\\val\\real\\0_000545.jpg",
+    "worst_margin": 0.4995,
+    "scores": {
+      "clean": 0.0001,
+      "jpeg_30": 0.0002,
+      "blur_2.0": 0.0003,
+      "resize_0.25": 0.0002,
+      "noise_0.10": 0.0005,
+      "crop_0.80": 0.0001
+    }
+  },
+  "aigc": {
+    "name": "1_000288.jpg",
+    "path": "E:\\\u8d5b\u90535\\data\\sid_subset\\val\\aigc\\1_000288.jpg",
+    "worst_margin": 0.4866,
+    "scores": {
+      "clean": 0.9906,
+      "jpeg_30": 0.9978,
+      "blur_2.0": 0.9913,
+      "resize_0.25": 0.9866,
+      "noise_0.10": 0.9984,
+      "crop_0.80": 0.9897
+    }
+  }
+}

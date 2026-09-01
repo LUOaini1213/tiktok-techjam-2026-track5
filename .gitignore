@@ -23,6 +23,8 @@ results/error_cases/
 results/*.json
 # error analysis note is a required deliverable -> keep it tracked
 !results/error_analysis.json
+# scripts/make_video.py reads this at build time -> a clone must be able to rebuild
+!results/demo_live_scores.json
 !results/.gitkeep
 
 # local tool state

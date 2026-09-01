@@ -69,23 +69,23 @@ Clean vs each Track-5 transform on the held-out validation **test** slice (calib
 <!-- ROBUSTNESS_TABLE -->
 | Transform | n | Accuracy | ROC AUC | 95% CI |
 |---|---:|---:|---:|---|
-| `clean` | 1400 | 0.9021 | 0.9634 | [0.9540, 0.9719] |
-| `jpeg_90` | 1400 | 0.9093 | 0.9674 | [0.9587, 0.9755] |
-| `jpeg_70` | 1400 | 0.9157 | 0.9728 | [0.9649, 0.9796] |
-| `jpeg_50` | 1400 | 0.9107 | 0.9682 | [0.9597, 0.9758] |
-| `jpeg_30` | 1400 | 0.8764 | 0.9547 | [0.9446, 0.9642] |
-| `blur_0.5` | 1400 | 0.8986 | 0.9618 | [0.9523, 0.9706] |
-| `blur_1.0` | 1400 | 0.8629 | 0.9567 | [0.9464, 0.9660] |
-| `blur_2.0` | 1400 | 0.8707 | 0.9500 | [0.9388, 0.9605] |
-| `resize_0.5` | 1400 | 0.8650 | 0.9567 | [0.9464, 0.9662] |
-| `resize_0.25` | 1400 | 0.8679 | 0.9455 | [0.9338, 0.9564] |
-| `noise_0.02` | 1400 | 0.8714 | 0.9244 | [0.9095, 0.9381] |
-| `noise_0.05` | 1400 | 0.8164 | 0.8851 | [0.8669, 0.9025] |
-| `noise_0.10` | 1400 | 0.6529 | 0.8117 | [0.7879, 0.8339] |
-| `jitter_0.20` | 1400 | 0.8714 | 0.9362 | [0.9230, 0.9483] |
-| `crop_0.80` | 1400 | 0.8850 | 0.9521 | [0.9418, 0.9620] |
+| `clean` | 1400 | 0.9007 | 0.9629 | [0.9534, 0.9714] |
+| `jpeg_90` | 1400 | 0.9107 | 0.9658 | [0.9569, 0.9740] |
+| `jpeg_70` | 1400 | 0.9186 | 0.9736 | [0.9658, 0.9806] |
+| `jpeg_50` | 1400 | 0.9079 | 0.9667 | [0.9580, 0.9747] |
+| `jpeg_30` | 1400 | 0.8843 | 0.9557 | [0.9459, 0.9655] |
+| `blur_0.5` | 1400 | 0.8979 | 0.9638 | [0.9542, 0.9723] |
+| `blur_1.0` | 1400 | 0.8593 | 0.9622 | [0.9526, 0.9708] |
+| `blur_2.0` | 1400 | 0.8793 | 0.9536 | [0.9425, 0.9634] |
+| `resize_0.5` | 1400 | 0.8657 | 0.9621 | [0.9523, 0.9708] |
+| `resize_0.25` | 1400 | 0.8714 | 0.9472 | [0.9355, 0.9579] |
+| `noise_0.02` | 1400 | 0.8943 | 0.9585 | [0.9482, 0.9681] |
+| `noise_0.05` | 1400 | 0.8957 | 0.9584 | [0.9476, 0.9681] |
+| `noise_0.10` | 1400 | 0.8829 | 0.9479 | [0.9362, 0.9587] |
+| `jitter_0.20` | 1400 | 0.8657 | 0.9411 | [0.9292, 0.9522] |
+| `crop_0.80` | 1400 | 0.8921 | 0.9578 | [0.9479, 0.9669] |
 
-**Clean AUC 0.9634; mean AUC across the 14 transformed conditions 0.9388 (-0.0246 vs clean); worst condition `noise_0.10` at 0.8117 (-0.1517 vs clean).** Every row is the same held-out test slice (1400 images, calibration images excluded) re-scored through the shipped inference path after the transform, so clean and transformed numbers are directly comparable.
+**Clean AUC 0.9629; mean AUC across the 14 transformed conditions 0.9582 (-0.0047 vs clean); worst condition `jitter_0.20` at 0.9411 (-0.0218 vs clean).** Every row is the same held-out test slice (1400 images, calibration images excluded) re-scored through the shipped inference path after the transform, so clean and transformed numbers are directly comparable.
 
 ![Robustness: clean vs social-media transforms](results/robustness_chart.png)
 <!-- /ROBUSTNESS_TABLE -->
@@ -105,19 +105,41 @@ folds it into each image's view block (inside the block, not appended — `sourc
 derives CV groups positionally, so appending would split an image across GroupKFold folds
 and leak). Refitting takes about a minute.
 
-Scored on the identical held-out slice, decided before promotion:
+This was the promotion decision, made before regenerating anything. Both heads were
+scored on the same held-out images: clean on the full 1400-image test slice (reported by
+`train.py`), and `noise_0.10` on a balanced 400-image subset of it, chosen so the decision
+probe would return in minutes rather than half an hour.
 
-| | clean AUC | `noise_0.10` AUC | `noise_0.10` 95% CI |
+| | clean AUC (n=1400) | `noise_0.10` AUC (n=400) | `noise_0.10` 95% CI |
 |---|---:|---:|---|
 | 4 views (jpeg/blur/resize) | 0.9634 | 0.8164 | [0.7720, 0.8585] |
 | **5 views (+ noise)** | **0.9629** | **0.9823** | **[0.9696, 0.9925]** |
 
-**+0.166 AUC on the collapsing transform, with non-overlapping confidence intervals, and
-clean AUC unchanged within noise (−0.0005).** Full per-transform deltas against the
-pre-change head (`results/baseline/`):
+**+0.166 AUC on the collapsing transform, with non-overlapping bootstrap CIs, and clean
+AUC unchanged within noise (−0.0005).** The full table below is then the shipped head
+re-scored on all 15 transforms at n=1400; per-transform deltas against the pre-change head
+(`results/baseline/robustness_table.csv`, same slice, same n):
 
 <!-- AB_TABLE -->
-_(not generated yet -- run the pipeline in 'Steps to reproduce results'.)_
+| Transform | baseline AUC | shipped AUC | delta AUC | CIs disjoint |
+|---|---:|---:|---:|---|
+| `clean` | 0.9634 | 0.9629 | -0.0005 | no |
+| `jpeg_90` | 0.9674 | 0.9658 | -0.0016 | no |
+| `jpeg_70` | 0.9728 | 0.9736 | +0.0008 | no |
+| `jpeg_50` | 0.9682 | 0.9667 | -0.0015 | no |
+| `jpeg_30` | 0.9547 | 0.9557 | +0.0010 | no |
+| `blur_0.5` | 0.9618 | 0.9638 | +0.0020 | no |
+| `blur_1.0` | 0.9567 | 0.9622 | +0.0055 | no |
+| `blur_2.0` | 0.9500 | 0.9536 | +0.0036 | no |
+| `resize_0.5` | 0.9567 | 0.9621 | +0.0054 | no |
+| `resize_0.25` | 0.9455 | 0.9472 | +0.0017 | no |
+| `noise_0.02` | 0.9244 | 0.9585 | +0.0341 | yes |
+| `noise_0.05` | 0.8851 | 0.9584 | +0.0733 | yes |
+| `noise_0.10` | 0.8117 | 0.9479 | +0.1362 | yes |
+| `jitter_0.20` | 0.9362 | 0.9411 | +0.0049 | no |
+| `crop_0.80` | 0.9521 | 0.9578 | +0.0057 | no |
+
+3 transform(s) improved beyond overlapping bootstrap CIs; 0 regressed beyond them.
 <!-- /AB_TABLE -->
 
 
@@ -125,15 +147,17 @@ _(not generated yet -- run the pipeline in 'Steps to reproduce results'.)_
 
 The official demonstration subset (`techjam-aigc/wildfake-eval-subset`, `default` config = COCO val2017 reals + DALL·E-3 Advanced fakes) scored through the **shipped** inference path on a balanced subsample. This measures cross-source generalization to a generator family absent from SID-Set training. Full table: `results/demo_benchmark.csv`.
 
+> **Not a matched A/B.** The shipped head was scored on a balanced 1000-image subsample; the pre-change snapshot in `results/baseline/demo_benchmark.csv` used 2000. Treat this section as a cross-source reference benchmark only — the head-to-head evidence is the robustness table above, where both heads were scored on the identical 1400-image slice.
+
 <!-- DEMO_TABLE -->
 | Transform | n | Accuracy | ROC AUC | 95% CI |
 |---|---:|---:|---:|---|
-| `clean` | 2000 | 0.8530 | 0.9187 | [0.9061, 0.9302] |
-| `jpeg_30` | 2000 | 0.8185 | 0.9133 | [0.9012, 0.9247] |
-| `resize_0.25` | 2000 | 0.7165 | 0.7925 | [0.7721, 0.8122] |
-| `noise_0.05` | 2000 | 0.7260 | 0.8532 | [0.8360, 0.8690] |
+| `clean` | 1000 | 0.8630 | 0.9372 | [0.9212, 0.9518] |
+| `jpeg_30` | 1000 | 0.8100 | 0.9292 | [0.9139, 0.9440] |
+| `resize_0.25` | 1000 | 0.6820 | 0.7700 | [0.7390, 0.7994] |
+| `noise_0.05` | 1000 | 0.8550 | 0.9294 | [0.9132, 0.9448] |
 
-**Cross-source clean AUC 0.9187 on 2000 balanced images from a generator family (DALL-E-3) absent from SID-Set training** -- an out-of-distribution check, not a tuning target.
+**Cross-source clean AUC 0.9372 on 1000 balanced images from a generator family (DALL-E-3) absent from SID-Set training** -- an out-of-distribution check, not a tuning target.
 <!-- /DEMO_TABLE -->
 
 ## Error analysis note
@@ -144,9 +168,9 @@ Representative false positives (authentic images flagged AIGC — creator harm),
 On the held-out test slice (1400 images: 720 real, 680 AIGC) at the shipped 0.5 threshold:
 
 - **False positives** (authentic flagged AIGC -- direct creator harm): 93/720 = **12.92% FPR**.
-- **False negatives** (generated images missed): 44/680 = **6.47% FNR**.
-- **FPR@95%TPR**: 16.94% clean, 21.81% after JPEG-30 -- the price in flagged authentic images if the product insisted on catching 95% of AIGC.
-- **JPEG-30 score drift**: real +0.0314, AIGC +0.0055 mean change in P(AIGC); 53 real images flip into false positives and 16 AIGC images flip into false negatives. AUC 0.9634 clean vs 0.9547 after JPEG-30.
+- **False negatives** (generated images missed): 46/680 = **6.76% FNR**.
+- **FPR@95%TPR**: 19.03% clean, 22.50% after JPEG-30 -- the price in flagged authentic images if the product insisted on catching 95% of AIGC.
+- **JPEG-30 score drift**: real +0.0074, AIGC -0.0019 mean change in P(AIGC); 42 real images flip into false positives and 17 AIGC images flip into false negatives. AUC 0.9629 clean vs 0.9557 after JPEG-30.
 
 The `k` highest-scoring FPs and lowest-scoring FNs, with their per-image clean and JPEG-30 scores, are in `results/error_analysis.json`.
 <!-- /ERROR_ANALYSIS -->
@@ -171,6 +195,7 @@ The `k` highest-scoring FPs and lowest-scoring FNs, with their per-image clean a
 - **Remaining untrained families.** `jitter` and `crop` are still scored but not training views. Their feature caches are already extracted (`scripts/extract_extra_view.py --family jitter|crop`); we ran out of clock to evaluate that candidate, so we shipped the one variant we could verify end-to-end rather than an unmeasured one.
 - **Hardest rows.** Extreme 0.25× thumbnails remain the weakest transform; a small learned frequency head or a second forensic scale could help.
 - **Local edits / face swaps** are only partially covered (tampered class upweight); a dedicated localization branch is out of scope here.
+- **Batched inference.** `embed_for_score` scores one image per CLIP forward, so the only way to use all cores is to shard across processes -- and each process holds its own ~1.4 GB copy of CLIP. On a 16 GB box that caps us at ~5 workers (10 died with `MemoryError`). Batching N images per forward would need one model copy and beat all five shards; we kept the one-image path because it is the single code path shared by train/eval/infer, which is what guarantees cached features and live scores are byte-identical.
 - **Scale.** We trained on a 2000/class subset for the deadline; `configs/default.yaml` targets 8000/class on a CUDA box (see below).
 - **False positives on heavily filtered real photos** hurt creators; a per-creator threshold or an abstain band would reduce that harm.
 

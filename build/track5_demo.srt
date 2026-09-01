@@ -1,0 +1,24 @@
+1
+00:00:00,000 --> 00:00:15,000
+A creator posts a photo. Three reposts later it has been JPEG re-encoded, shrunk to a thumbnail, and filtered. Detectors are benchmarked on the original. Users only see the repost.
+
+2
+00:00:15,000 --> 00:00:35,000
+RepostGuard treats the repost pipeline as the test. A frozen CLIP VIT-B-32, eighty-eight million parameters, far under the two billion cap, plus a forensic branch at native resolution. And critically, every official transform is also a training view.
+
+3
+00:00:35,000 --> 00:00:55,000
+One CLIP forward gives us two feature variants, and cross-validation picks the winner rather than us assuming. The forensic branch runs in parallel at native scale. Inference averages three views, and a sigmoid calibration on a group-disjoint slice makes the output a real probability.
+
+4
+00:00:55,000 --> 00:02:20,000
+The required contract is a directory in and JSON out, one row per file. Now the part that matters. This is a held-out generated image, scored through the shipped inference path under all six official transforms: JPEG thirty, heavy blur, a quarter-scale thumbnail, additive noise, and an eighty percent crop. The score never leaves nine-nine. Here is a held-out authentic photo through the same six transforms. It stays at essentially zero throughout. But we also report where it still costs creators. At the shipped threshold our false positive rate is thirteen percent, and JPEG thirty compression alone pushes forty-two authentic images across the line. Compression makes real photos look generated. A false positive is a real creator wrongly accused, so we measure it and publish it.
+
+5
+00:02:20,000 --> 00:02:45,000
+We found our own worst bug by measuring. Six transform families; only four were training views. Noise collapsed to zero point eight one. We added the missing view, refit in a minute, and it went to zero point nine five. Non-overlapping intervals, clean accuracy unchanged. Three improved. Zero regressed.
+
+6
+00:02:45,000 --> 00:03:00,000
+Eighty-eight million parameters, running on a laptop CPU. When a new generator appears it becomes a new training view and the head refits in a minute, instead of waiting on a training run. Thanks for watching.
+

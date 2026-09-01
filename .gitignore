@@ -51,3 +51,7 @@ Thumbs.db
 # A/B candidate bundles (the winner is promoted to repostguard.joblib)
 artifacts/repostguard_*.joblib
 !artifacts/repostguard.joblib
+
+# generated video build artifacts (mp4 is committed, intermediates are not)
+build/video/
+build/*.png

@@ -92,6 +92,33 @@ Clean vs each Track-5 transform on the held-out validation **test** slice (calib
 ![Robustness: clean vs social-media transforms](results/robustness_chart.png)
 <!-- /ROBUSTNESS_TABLE -->
 
+### Which task definition? The same scores, split by class
+
+Every headline number above scores **real vs all AIGC**, and in SID-Set "AIGC" includes the
+*tampered* class -- real photographs with a locally generated edit. Most published detectors,
+and most other entries in this track, score real vs **fully synthetic** only, which is the
+easier problem. Since the per-image scores are persisted, both definitions come from the
+same run (`scripts/per_class_table.py`, `results/robustness_by_class.csv`):
+
+<!-- BY_CLASS -->
+| Transform | AUC: real vs **all AIGC** (headline) | AUC: real vs **fully synthetic** | AUC: real vs **tampered** | TPR@1%FPR all | TPR@1%FPR synthetic |
+|---|---:|---:|---:|---:|---:|
+| `clean` | 0.9629 | 0.9832 [0.9763, 0.9891] | 0.9434 | 0.5456 | 0.6637 |
+| `jpeg_90` | 0.9658 | 0.9855 [0.9791, 0.9907] | 0.9469 | 0.5559 | 0.6877 |
+| `jpeg_70` | 0.9736 | 0.9903 [0.9854, 0.9943] | 0.9577 | 0.6103 | 0.7538 |
+| `jpeg_50` | 0.9667 | 0.9894 [0.9842, 0.9939] | 0.9449 | 0.5250 | 0.7207 |
+| `jpeg_30` | 0.9557 | 0.9837 [0.9774, 0.9897] | 0.9288 | 0.4971 | 0.6577 |
+| `blur_0.5` | 0.9638 | 0.9838 [0.9768, 0.9895] | 0.9447 | 0.5235 | 0.6396 |
+| `blur_1.0` | 0.9622 | 0.9861 [0.9798, 0.9913] | 0.9394 | 0.5750 | 0.7357 |
+| `blur_2.0` | 0.9536 | 0.9872 [0.9816, 0.9919] | 0.9213 | 0.5279 | 0.7628 |
+| `resize_0.5` | 0.9621 | 0.9874 [0.9815, 0.9923] | 0.9378 | 0.5691 | 0.7568 |
+
+n per row: 1400 (all), 1053 (real + fully synthetic), 1067 (real + tampered). Mean over transformed rows: fully synthetic 0.9867, tampered 0.9402.
+<!-- /BY_CLASS -->
+
+Read the middle column when comparing against a number that was computed the usual way, and
+the right-hand column for where the model is actually weakest: locally edited photographs.
+
 ### What actually makes it robust: a 2x2 ablation against a published baseline
 
 The robustness table is also how we found, and then correctly diagnosed, our own worst

@@ -235,6 +235,31 @@ def leakage_section(results: Path) -> str:
     return "\n".join(out)
 
 
+def by_class_section(results: Path) -> str:
+    rows = _rows(results / "robustness_by_class.csv")
+    if not rows:
+        return MISSING
+    head = (
+        "| Transform | AUC: real vs **all AIGC** (headline) | AUC: real vs **fully synthetic** | "
+        "AUC: real vs **tampered** | TPR@1%FPR all | TPR@1%FPR synthetic |\n"
+        "|---|---:|---:|---:|---:|---:|"
+    )
+    body = "\n".join(
+        f"| `{r['transform']}` | {r['auc_all']} | {r['auc_synthetic']} [{r['auc_synthetic_lo']}, {r['auc_synthetic_hi']}] | "
+        f"{r['auc_tampered']} | {r['tpr1_all']} | {r['tpr1_synthetic']} |"
+        for r in rows
+    )
+    syn = [float(r["auc_synthetic"]) for r in rows if r["transform"] != "clean"]
+    tam = [float(r["auc_tampered"]) for r in rows if r["transform"] != "clean"]
+    n = rows[0]
+    note = (
+        f"\n\nn per row: {n['n_all']} (all), {n['n_synthetic']} (real + fully synthetic), "
+        f"{n['n_tampered']} (real + tampered). "
+        + (f"Mean over transformed rows: fully synthetic {sum(syn)/len(syn):.4f}, tampered {sum(tam)/len(tam):.4f}." if syn else "")
+    )
+    return f"{head}\n{body}{note}"
+
+
 def replace_section(text: str, name: str, body: str) -> str:
     start, end = f"<!-- {name} -->", f"<!-- /{name} -->"
     i = text.find(start)
@@ -256,6 +281,7 @@ def main() -> None:
         ("ROBUSTNESS_TABLE", robustness_section(results)),
         ("DEMO_TABLE", demo_section(results)),
         ("AB_TABLE", ab_section(results)),
+        ("BY_CLASS", by_class_section(results)),
         ("ABLATION", ablation_section(results)),
         ("LEAKAGE", leakage_section(results)),
         ("ERROR_ANALYSIS", error_section(results)),

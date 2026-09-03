@@ -30,10 +30,15 @@ def _rows(path: Path) -> list[dict]:
 
 
 def _md_table(rows: list[dict]) -> str:
-    head = "| Transform | n | Accuracy | ROC AUC | 95% CI |\n|---|---:|---:|---:|---|"
+    # TPR@1%FPR is the deployment number (how much AIGC is caught if at most 1 in 100
+    # authentic images may be flagged); shown whenever the table carries it.
+    has_tpr = any(r.get("tpr_at_1fpr") for r in rows)
+    head = "| Transform | n | Accuracy | ROC AUC | 95% CI |" + (" TPR@1%FPR |" if has_tpr else "")
+    head += "\n|---|---:|---:|---:|---|" + ("---:|" if has_tpr else "")
     body = "\n".join(
         f"| `{r['transform']}` | {r['n']} | {r['acc']} | {r['auc']} | "
         f"[{r.get('auc_lo','')}, {r.get('auc_hi','')}] |"
+        + (f" {r.get('tpr_at_1fpr','')} |" if has_tpr else "")
         for r in rows
     )
     return f"{head}\n{body}"

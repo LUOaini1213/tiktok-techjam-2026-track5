@@ -86,7 +86,12 @@ def merge_parts(parts, dest: Path) -> Path:
             with Path(part).open(newline="", encoding="utf-8") as f:
                 rows.extend(csv.DictReader(f))
     seen = {(r["transform"], r["head"]): r for r in rows}
-    missing = [(t, h) for t in order for h in heads if (t, h) not in seen]
+    # Completeness is per transform present: every head must have scored every transform
+    # that any part contains. (The cross-source run covers 4 transforms, not all 15.)
+    present = sorted({t for t, _ in seen}, key=order.get)
+    if not present:
+        raise SystemExit("No ablation rows found in the given parts")
+    missing = [(t, h) for t in present for h in heads if (t, h) not in seen]
     if missing:
         raise SystemExit(f"Merged ablation incomplete, missing {len(missing)} cells, e.g. {missing[:3]}")
     dest.parent.mkdir(parents=True, exist_ok=True)

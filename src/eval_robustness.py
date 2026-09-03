@@ -165,7 +165,9 @@ def evaluate_robustness(
 
     # Per-image scores are persisted so any later metric (a new operating point, a
     # per-class breakdown, a paired test against another head) never needs a re-run.
-    scores_dir = Path(scores_dir) if scores_dir else dest.parent / "scores"
+    # Fixed location, NOT relative to the table path: sharded runs write their part CSVs to
+    # a scratch dir, and the scores must still land in one place.
+    scores_dir = Path(scores_dir) if scores_dir else cfg["results_dir"] / "scores"
     scores_dir.mkdir(parents=True, exist_ok=True)
 
     with dest.open("w", newline="", encoding="utf-8") as f:

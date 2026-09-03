@@ -1,0 +1,53 @@
+{
+  "n": 1400,
+  "n_real": 720,
+  "n_fake": 680,
+  "probes": {
+    "blockiness_8px": {
+      "auroc_raw": 0.5858108660130719,
+      "separability": 0.5858108660130719,
+      "mean_real": 0.8259051185515192,
+      "mean_fake": 1.557970609778867
+    },
+    "laplacian_energy": {
+      "auroc_raw": 0.3987295751633987,
+      "separability": 0.6012704248366013,
+      "mean_real": 15.565088392462995,
+      "mean_fake": 11.897079314203824
+    }
+  },
+  "control": {
+    "clip_only_4v": {
+      "clean": 0.9501,
+      "jpeg95_x1": 0.9507,
+      "jpeg95_x2": 0.951
+    },
+    "clip_only_5v": {
+      "clean": 0.9511,
+      "jpeg95_x1": 0.9516,
+      "jpeg95_x2": 0.952
+    },
+    "forensic_4v": {
+      "clean": 0.9635,
+      "jpeg95_x1": 0.964,
+      "jpeg95_x2": 0.9644
+    },
+    "forensic_5v": {
+      "clean": 0.963,
+      "jpeg95_x1": 0.9635,
+      "jpeg95_x2": 0.9637
+    }
+  },
+  "delta_x1": {
+    "clip_only_4v": 0.0006000000000000449,
+    "clip_only_5v": 0.000500000000000056,
+    "forensic_4v": 0.0004999999999999449,
+    "forensic_5v": 0.000500000000000056
+  },
+  "delta_x2": {
+    "clip_only_4v": 0.0009000000000000119,
+    "clip_only_5v": 0.0009000000000000119,
+    "forensic_4v": 0.0009000000000000119,
+    "forensic_5v": 0.0007000000000000339
+  }
+}

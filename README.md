@@ -187,7 +187,23 @@ forensic branch contains block-DCT statistics aligned to the JPEG grid -- the fe
 would notice. So we ran the control (`scripts/leakage_control.py`):
 
 <!-- LEAKAGE -->
-_(not generated yet -- run the pipeline in 'Steps to reproduce results'.)_
+On the held-out test slice (1400 images; both classes are stored as JPEG Q95 by our own download pipeline):
+
+**1. Does the shortcut exist in the data?** Hand-written scalars, no model. Separability is the AUROC of the scalar on its own, direction-agnostic; 0.5 means none.
+
+| probe | separability | mean real | mean fake |
+|---|---:|---:|---:|
+| `blockiness_8px` | **0.5858** | 0.8259 | 1.5580 |
+| `laplacian_energy` | **0.6013** | 15.5651 | 11.8971 |
+
+**2. Does the model use it?** Every image re-encoded at JPEG Q95, both classes identically, one and two extra generations (which equalises compression history), then re-scored:
+
+| head | clean AUC | +1 generation | +2 generations | delta (+1) |
+|---|---:|---:|---:|---:|
+| CLIP-only, 4 views (UnivFD-style) | 0.9501 | 0.9507 | 0.9510 | +0.0006 |
+| CLIP-only, 5 views | 0.9511 | 0.9516 | 0.9520 | +0.0005 |
+| CLIP + forensic, 4 views | 0.9635 | 0.9640 | 0.9644 | +0.0005 |
+| CLIP + forensic, 5 views (shipped) | 0.9630 | 0.9635 | 0.9637 | +0.0005 |
 <!-- /LEAKAGE -->
 
 ## WildFake demonstration benchmark (never used in training)

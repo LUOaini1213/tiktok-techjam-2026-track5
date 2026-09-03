@@ -22,10 +22,10 @@ RepostGuard — AIGC Detection That Survives the Repost
 
 ---
 
-## 3. Elevator pitch（一句话简介，190 字符）
+## 3. Elevator pitch（一句话简介，196 字符）
 
 ```
-An AIGC detector benchmarked on what actually circulates, not the clean original. It found its own blind spot — noise was scored but never trained — and worst-case AUC went 0.8117 to 0.9479.
+Built for what actually circulates, not the clean original. Its forensic branch is what generalizes to unseen generators (+0.25 AUC on thumbnails) - and what noise breaks, until we trained for it.
 ```
 
 ---
@@ -170,22 +170,26 @@ Four pieces, plus the discipline that connects them:
 3. **Test-time augmentation.** Inference averages the original view with a JPEG-70 view and a 0.5× down/up view, re-normalising so the embedding scale is independent of view count.
 4. **Leak-free evaluation.** The head is sigmoid-calibrated on a group-disjoint 30% slice of validation and every reported metric comes from the held-out 70%. `artifacts/test_images.json` pins that slice so the robustness table and the error-analysis note are computed on identical images.
 
-**What actually moved the number:**
+**What actually moved the number — and what we got wrong the first time.**
 
-**Closing the augmentation gap (+0.1362 AUC at noise σ0.10, the single biggest gain).** Our evaluation grid has six official transform families. Our training views had four. `noise`, `jitter` and `crop` were scored but never learned — and they came back as three of our weakest rows, with noise σ0.10 collapsing to 0.8117 AUC while every trained family held above 0.94. Adding one noise view per training image cost about 4,000 CLIP forward passes, because the four existing views were reused rather than re-extracted, and the head refits in roughly a minute.
+We built the detector, then built a 2×2 ablation to find out which part of it was doing the work: **features** (CLIP-only vs CLIP + native-resolution forensic) crossed with **training views** (the four we started with — clean/jpeg/blur/resize — vs five with a noise view). The CLIP-only / 4-view corner is a UnivFD-style linear probe (Ojha et al., CVPR 2023): a published baseline, not a strawman. All four heads are fit and sigmoid-calibrated identically, and every transformed image is embedded once and scored by all four from column slices of the same vector, so the whole grid costs one sweep.
 
-The result, decided on the identical slice *before* anything was regenerated:
+Mean AUC over the 14 transformed conditions, held-out 1400-image slice:
 
-| transform | before | after | Δ |
-|---|---|---|---|
-| noise σ0.10 | 0.8117 | 0.9479 | **+0.1362** |
-| noise σ0.05 | 0.8851 | 0.9584 | +0.0733 |
-| noise σ0.02 | 0.9244 | 0.9585 | +0.0341 |
-| clean | 0.9634 | 0.9629 | −0.0005 |
+| | 4 views | 5 views (+ noise) |
+|---|---|---|
+| CLIP-only | 0.9445 *(UnivFD-style baseline)* | 0.9480 |
+| CLIP + forensic | 0.9389 ↓ | **0.9583** *(shipped)* |
 
-Those three noise rows are the only ones whose bootstrap confidence intervals move apart, and all three move up. **Nothing regressed beyond overlapping intervals.** The worst transform in the grid went 0.8117 → 0.9411; clean accuracy is unchanged inside noise.
+Five things the grid says, in order of importance:
 
-**Verifying rather than assuming which CLIP feature to use.** Pre-projection features are the usual recommendation for linear-probe fake detection, but we ran the A/B on our own data instead of citing the paper, and the projected variant won.
+1. **Cross-source, the forensic branch is the whole generalization story.** On the WildFake demonstration subset — a generator family absent from training — a UnivFD-style probe scores 0.8094 clean and **0.5392 on quarter-scale thumbnails, barely above chance**. Adding the forensic branch lifts that to 0.9189 and 0.7938. Low-level residual / DCT / spectral statistics of the generation process transfer across generators; the semantic embedding of what our training fakes look like does not. Shipped: 0.9334 clean, +0.12 to +0.21 over the baseline on every cross-source row.
+2. **In-distribution, the forensic branch alone *hurts*.** It adds +0.013 on clean and on every jpeg/blur/resize/crop row, and collapses under additive noise: 0.9250 → 0.8096 AUC at σ0.10. Its 28 dimensions are exactly the high-frequency statistics that broadband noise swamps. CLIP-only never had this problem. Our first write-up blamed "noise was scored but never trained"; that was the fix, not the cause.
+3. **The noise view is what makes the forensic branch deployable.** Alone it is worth +0.0035; forensic alone is worth −0.0056; together they are worth +0.0138. The interaction is the finding: a high-frequency forensic branch is only safe when the training distribution contains the corruption that destroys it.
+4. **Shipped beats the published baseline on 15 / 15 in-distribution rows** (worst row 0.9237 → 0.9411). Honest caveat: no single in-distribution row's bootstrap CIs are disjoint — consistently better, not significantly better per row.
+5. **At the deployment operating point the forensic branch matters more than AUC suggests.** TPR@1%FPR on clean: baseline 0.441, shipped 0.546 (0.664 with the tampered class excluded — we report the harder, tampered-inclusive definition throughout).
+
+**It is not reading compression history.** Several teams found SID-Set reals ship as JPEG and fakes as PNG. Our pipeline stores both as JPEG Q95, which equalises the container but leaves reals double-compressed and fakes single — and our forensic branch has JPEG-grid-aligned block-DCT features, the exact thing that would notice. So we ran the control on the held-out slice: a bare 8×8 blockiness scalar separates the classes at only 0.586 AUROC (the shortcut is essentially absent from our data); and re-encoding every image at Q95, both classes identically, for one and two extra generations moves every head by ≤ +0.0009 AUC. The forensic heads do not drop at all.
 
 ## Challenges we ran into
 
@@ -201,7 +205,7 @@ Those three noise rows are the only ones whose bootstrap confidence intervals mo
 
 ## Accomplishments that we're proud of
 
-**The gap was found by our own instrumentation.** A robustness table is normally the thing you produce at the end to show you are robust. Ours was the thing that told us we were not, and pointed at the specific cause.
+**The mechanism was found by our own instrumentation — and it corrected our own first explanation.** A robustness table is normally the thing you produce at the end to show you are robust. Ours was the thing that told us we were not, and pointed at the specific cause.
 
 **The A/B is honest about its own weakest link.** The demo benchmark is *not* a matched comparison — the shipped head was scored on 1000 images and the pre-change snapshot on 2000 — and the README says so rather than inviting the reader to compare them. The head-to-head evidence is the 1400-image robustness table where both heads saw identical inputs. The pre-change results are committed in `results/baseline/` so anyone can check the delta themselves.
 

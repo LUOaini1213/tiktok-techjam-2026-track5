@@ -57,3 +57,6 @@ artifacts/repostguard_*.joblib
 # generated video build artifacts (mp4 is committed, intermediates are not)
 build/video/
 build/*.png
+
+results/_abl/
+results/_abl_demo/

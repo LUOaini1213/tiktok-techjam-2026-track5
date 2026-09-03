@@ -101,11 +101,56 @@ experiment, but it is a different mechanism from the noise story.
 3. The README's "Closing the augmentation gap" section is accurate in its numbers but
    attributes the collapse to the wrong cause. It should say the forensic branch caused it.
 
-## Still unknown — pending the cross-source run
+## Finding 5 — cross-source, the forensic branch is the *whole* generalization story
 
-`results/ablation_demo_table.csv` (WildFake demo subset, never trained on) will answer the
-question this analysis raises: **does the forensic branch also hurt on a generator family
-it has never seen?** Our worst cross-source number is `resize_0.25` = 0.7700 for the shipped
-head. If CLIP-only beats shipped there, the forensic dimensions are overfitting to SID-Set's
-generators and the right production move may be a smaller forensic weight or a
-noise/resize-aware gating of that branch.
+Same four heads on the WildFake demonstration subset (COCO val2017 reals vs DALL·E-3
+Advanced fakes — a generator family absent from training), n = 2000 per cell,
+`results/ablation_demo_table.csv`:
+
+| transform | UnivFD (CLIP-only) | + noise view | + forensic | shipped (both) |
+|---|---:|---:|---:|---:|
+| clean | 0.8094 | 0.7799 | 0.9189 | **0.9334** |
+| jpeg_30 | 0.7957 | 0.7895 | 0.9134 | **0.9327** |
+| resize_0.25 | **0.5392** | 0.5085 | **0.7938** | 0.7536 |
+| noise_0.05 | 0.7741 | 0.8137 | 0.8518 | **0.9290** |
+
+The hypothesis this document raised — that the forensic dimensions might be overfitting
+SID-Set's generators — is **refuted, and inverted**. It is the CLIP embedding that fails
+to transfer: a UnivFD-style probe scores 0.8094 clean on the unseen family and **0.5392 on
+quarter-scale thumbnails, barely above chance**. The forensic branch lifts that by +0.11
+on clean and +0.25 on thumbnails. Low-level residual / DCT / spectral statistics of the
+generation process transfer across generators; the semantic embedding of "what SID-Set
+fakes look like" does not.
+
+Shipped beats the published baseline by +0.12 to +0.21 on every cross-source row.
+
+Two honest nuances in this table:
+
+- `resize_0.25` is the one cell where shipped (0.7536) is *not* the best head: forensic
+  without the noise view scores 0.7938. The noise view costs about 0.04 there, cross-source
+  only. This is now our weakest number anywhere. Note that resize *is* already one of the
+  four base training views, so this is not a missing-view problem: a 0.25× down/up pass
+  physically removes the high-frequency content the forensic branch measures, and on the
+  unseen generator CLIP alone is near chance. Candidates are a second, coarser forensic
+  scale or a resize-specific head — not more of the same augmentation.
+- The noise view slightly *hurts* CLIP-only cross-source (0.8094 → 0.7799 clean). It only
+  helps once the forensic branch is present, where it is decisive on noise (0.8518 → 0.9290).
+  Same interaction as in-distribution, larger in magnitude.
+
+This also resolves the sample-size mismatch disclosed in the README's demo-benchmark
+section: the "+ forensic, 4 views" column here is the pre-change head at n = 2000
+(0.9189 clean, matching the `results/baseline/` snapshot's 0.9187), and "shipped" is the
+promoted head at the same n. It is the matched cross-source A/B the README said it did not
+have.
+
+## Revised summary of what each component is for
+
+| component | in-distribution | cross-source (unseen generator) |
+|---|---|---|
+| CLIP-only probe (UnivFD) | 0.9445 mean, solid | 0.81 clean, **0.54 on thumbnails** |
+| + native-resolution forensic | +0.013, **but collapses under noise** | **+0.11 clean, +0.25 thumbnails** — the generalization |
+| + noise training view | makes the forensic branch safe under noise | same; −0.04 on cross-source thumbnails |
+
+The one-sentence version for the write-up: *a native-resolution forensic branch is what
+lets a frozen-CLIP detector transfer to generators it has never seen, and a noise training
+view is what stops that same branch collapsing under the corruption it is most sensitive to.*

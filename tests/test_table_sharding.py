@@ -15,7 +15,7 @@ from src.augment import EVAL_PRESETS
 from src.eval_robustness import evaluate_robustness, merge_tables
 from tests.dataset_guard import needs_dataset
 
-FIELDS = ["transform", "n", "acc", "auc", "auc_lo", "auc_hi"]
+FIELDS = ["transform", "n", "acc", "auc", "auc_lo", "auc_hi", "tpr_at_1fpr", "tpr_at_5fpr"]
 
 
 def _write(path: Path, names: list[str]) -> Path:
@@ -23,7 +23,8 @@ def _write(path: Path, names: list[str]) -> Path:
         w = csv.DictWriter(f, fieldnames=FIELDS)
         w.writeheader()
         for n in names:
-            w.writerow({"transform": n, "n": 2, "acc": "1.0000", "auc": "1.0000", "auc_lo": "1.0000", "auc_hi": "1.0000"})
+            w.writerow({"transform": n, "n": 2, "acc": "1.0000", "auc": "1.0000", "auc_lo": "1.0000",
+                        "auc_hi": "1.0000", "tpr_at_1fpr": "1.0000", "tpr_at_5fpr": "1.0000"})
     return path
 
 

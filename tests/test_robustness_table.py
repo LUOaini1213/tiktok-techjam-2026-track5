@@ -39,7 +39,7 @@ class RobustnessTableTests(unittest.TestCase):
         self.assertTrue(table)
         self.assertEqual(
             list(table[0].keys()),
-            ["transform", "n", "acc", "auc", "auc_lo", "auc_hi"],
+            ["transform", "n", "acc", "auc", "auc_lo", "auc_hi", "tpr_at_1fpr", "tpr_at_5fpr"],
         )
         for family in ("clean", "jpeg", "blur", "resize", "noise", "jitter", "crop"):
             self.assertIn(family, joined, msg=f"missing family {family} in {names}")
@@ -48,4 +48,6 @@ class RobustnessTableTests(unittest.TestCase):
             float(row["auc"])
             float(row["auc_lo"])
             float(row["auc_hi"])
+            float(row["tpr_at_1fpr"])
+            float(row["tpr_at_5fpr"])
             self.assertGreaterEqual(int(row["n"]), 2)

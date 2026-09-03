@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 import numpy as np
-from sklearn.metrics import accuracy_score, roc_auc_score
+from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve
 from tqdm import tqdm
 
 from .augment import EVAL_PRESETS, apply_named
@@ -71,6 +71,24 @@ def stratified_bootstrap_auc_ci(
     return float(lo), float(hi)
 
 
+TABLE_FIELDS = ["transform", "n", "acc", "auc", "auc_lo", "auc_hi", "tpr_at_1fpr", "tpr_at_5fpr"]
+
+
+def tpr_at_fpr(y: np.ndarray, s: np.ndarray, target: float) -> float:
+    """TPR at the largest operating point whose FPR does not exceed `target`.
+
+    TPR@1%FPR is the deployment number for a moderation detector: how many generated
+    images get caught if at most 1 in 100 authentic images may be wrongly flagged.
+    """
+    y = np.asarray(y)
+    s = np.asarray(s)
+    if len(np.unique(y)) < 2:
+        return float("nan")
+    fpr, tpr, _ = roc_curve(y, s)
+    ok = np.where(fpr <= target)[0]
+    return float(tpr[ok[-1]]) if len(ok) else float("nan")
+
+
 def merge_tables(parts: list[Path], dest: Path) -> Path:
     """Merge sharded robustness CSVs back into one table in EVAL_PRESETS order.
 
@@ -92,10 +110,11 @@ def merge_tables(parts: list[Path], dest: Path) -> Path:
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     with dest.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["transform", "n", "acc", "auc", "auc_lo", "auc_hi"])
+        writer = csv.DictWriter(f, fieldnames=TABLE_FIELDS, extrasaction="ignore")
         writer.writeheader()
         for name in order:
-            writer.writerow(seen[name])
+            # older parts may lack the TPR columns; write them blank rather than fail
+            writer.writerow({k: seen[name].get(k, "") for k in TABLE_FIELDS})
     return dest
 
 
@@ -106,6 +125,7 @@ def evaluate_robustness(
     bootstrap_reps: int = 2000,
     transforms: list[str] | None = None,
     weights: Path | None = None,
+    scores_dir: Path | None = None,
 ) -> Path:
     # Pure argument validation, before anything expensive or destructive: a typo should
     # fail instantly rather than after a CLIP load, and must never reach the "w" open
@@ -143,9 +163,13 @@ def evaluate_robustness(
     dest = Path(table_path) if table_path else cfg["results_dir"] / "robustness_table.csv"
     dest.parent.mkdir(parents=True, exist_ok=True)
 
-    fieldnames = ["transform", "n", "acc", "auc", "auc_lo", "auc_hi"]
+    # Per-image scores are persisted so any later metric (a new operating point, a
+    # per-class breakdown, a paired test against another head) never needs a re-run.
+    scores_dir = Path(scores_dir) if scores_dir else dest.parent / "scores"
+    scores_dir.mkdir(parents=True, exist_ok=True)
+
     with dest.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=TABLE_FIELDS)
         writer.writeheader()
         for name, op, param in presets:
             y_true = []
@@ -165,6 +189,10 @@ def evaluate_robustness(
                 y_true.append(int(row["label"]))
             y = np.array(y_true)
             s = np.array(scores)
+            np.savez_compressed(
+                scores_dir / f"{name}.npz",
+                y=y, score=s, path=np.array([Path(r["path"]).name for r in rows]),
+            )
             hard = (s >= 0.5).astype(int)
             acc = float(accuracy_score(y, hard))
             try:
@@ -180,6 +208,8 @@ def evaluate_robustness(
                     "auc": f"{auc:.4f}",
                     "auc_lo": f"{lo:.4f}",
                     "auc_hi": f"{hi:.4f}",
+                    "tpr_at_1fpr": f"{tpr_at_fpr(y, s, 0.01):.4f}",
+                    "tpr_at_5fpr": f"{tpr_at_fpr(y, s, 0.05):.4f}",
                 }
             )
             f.flush()

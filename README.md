@@ -15,7 +15,7 @@ AIGC detectors that look strong on clean lab images often collapse after a TikTo
 - **Test-time augmentation (TTA).** Inference averages the original view with a JPEG-70 view and a 0.5× down/up view; the averaged CLIP embedding is re-L2-normalized so its scale does not depend on the view count. Train, eval, and infer all go through the **same** `embed_for_score` path so cached features match scored features exactly.
 - **Sigmoid calibration.** After the head is fit, we sigmoid-calibrate it on a group-disjoint 30% slice of the validation set and report metrics only on the held-out 70% test slice, so `pred` is a usable P(AIGC) probability rather than a raw margin.
 
-**Training data:** SID-Set (`saberzl/SID_Set`) binary labels: `0` real vs `1` AIGC-positive (`1` full-synthetic **and** `2` tampered, upweighted 5×). Official JPEG/blur/resize/**noise** views plus clean/degraded consistency rows — 5 views per image. The noise view was added after the robustness table showed it was the one official family the model had never trained on (see *Closing the augmentation gap* below). The official WildFake demonstration subset is **never used for training** — it is only a reference benchmark (see below).
+**Training data:** SID-Set (`saberzl/SID_Set`) binary labels: `0` real vs `1` AIGC-positive (`1` full-synthetic **and** `2` tampered, upweighted 5×). Official JPEG/blur/resize/**noise** views plus clean/degraded consistency rows — 5 views per image. The noise view was added after the robustness table exposed a collapse under additive noise; the 2×2 ablation below shows the forensic branch caused that collapse and the noise view is what makes the branch safe (see *What actually makes it robust*). The official WildFake demonstration subset is **never used for training** — it is only a reference benchmark (see below).
 
 ## Problem-statement alignment
 
@@ -210,7 +210,7 @@ On the held-out test slice (1400 images; both classes are stored as JPEG Q95 by 
 
 The official demonstration subset (`techjam-aigc/wildfake-eval-subset`, `default` config = COCO val2017 reals + DALL·E-3 Advanced fakes) scored through the **shipped** inference path on a balanced subsample. This measures cross-source generalization to a generator family absent from SID-Set training. Full table: `results/demo_benchmark.csv`.
 
-> **Not a matched A/B.** The shipped head was scored on a balanced 1000-image subsample; the pre-change snapshot in `results/baseline/demo_benchmark.csv` used 2000. Treat this section as a cross-source reference benchmark only — the head-to-head evidence is the robustness table above, where both heads were scored on the identical 1400-image slice.
+> **Not a matched A/B on its own.** The shipped head was scored on a balanced 1000-image subsample here; the pre-change snapshot in `results/baseline/demo_benchmark.csv` used 2000. The matched cross-source comparison — both heads, same 2000 images — is the cross-source table in *What actually makes it robust* above (`results/ablation_demo_table.csv`); this section is the shipped head's reference benchmark only.
 
 <!-- DEMO_TABLE -->
 | Transform | n | Accuracy | ROC AUC | 95% CI |

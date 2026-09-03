@@ -133,6 +133,108 @@ def error_section(results: Path) -> str:
     )
 
 
+def _abl_matrix(rows: list[dict]) -> dict:
+    """Mean AUC per head over the transformed rows, plus the worst row per head."""
+    heads = ["clip_only_4v", "clip_only_5v", "forensic_4v", "forensic_5v"]
+    per = {h: [] for h in heads}
+    worst = {h: (None, 9.0) for h in heads}
+    for r in rows:
+        if r["transform"] == "clean":
+            continue
+        h, a = r["head"], float(r["auc"])
+        if h in per:
+            per[h].append(a)
+            if a < worst[h][1]:
+                worst[h] = (r["transform"], a)
+    mean = {h: (sum(v) / len(v) if v else float("nan")) for h, v in per.items()}
+    return {"mean": mean, "worst": worst}
+
+
+def ablation_section(results: Path) -> str:
+    rows = _rows(results / "ablation_table.csv")
+    if not rows:
+        return MISSING
+    m = _abl_matrix(rows)
+    clean = {r["head"]: float(r["auc"]) for r in rows if r["transform"] == "clean"}
+    nan = float("nan")
+    out = [
+        "Mean AUC over the 14 transformed conditions (held-out SID-Set test slice, n = 1400 per cell):",
+        "",
+        "| | 4 views (jpeg/blur/resize) | 5 views (+ noise) |",
+        "|---|---:|---:|",
+        f"| **CLIP-only** | {m['mean']['clip_only_4v']:.4f} *(UnivFD-style baseline)* | {m['mean']['clip_only_5v']:.4f} |",
+        f"| **CLIP + forensic** | **{m['mean']['forensic_4v']:.4f}** (down) | **{m['mean']['forensic_5v']:.4f}** *(shipped)* |",
+        "",
+        f"Worst single transform: baseline {m['worst']['clip_only_4v'][1]:.4f} (`{m['worst']['clip_only_4v'][0]}`), "
+        f"forensic alone **{m['worst']['forensic_4v'][1]:.4f}** (`{m['worst']['forensic_4v'][0]}`), "
+        f"shipped {m['worst']['forensic_5v'][1]:.4f} (`{m['worst']['forensic_5v'][0]}`). "
+        f"Clean AUC: baseline {clean.get('clip_only_4v', nan):.4f}, shipped {clean.get('forensic_5v', nan):.4f}.",
+    ]
+    demo = _rows(results / "ablation_demo_table.csv")
+    if demo:
+        by: dict = {}
+        for r in demo:
+            by.setdefault(r["transform"], {})[r["head"]] = float(r["auc"])
+        out += [
+            "",
+            "Cross-source (WildFake demo subset, a generator family absent from training, n = 2000 per cell):",
+            "",
+            "| transform | UnivFD-style | + noise view | + forensic | shipped |",
+            "|---|---:|---:|---:|---:|",
+        ]
+        for t in ["clean", "jpeg_30", "resize_0.25", "noise_0.05"]:
+            if t in by:
+                b = by[t]
+                out.append(
+                    f"| `{t}` | {b.get('clip_only_4v', nan):.4f} | {b.get('clip_only_5v', nan):.4f} | "
+                    f"{b.get('forensic_4v', nan):.4f} | **{b.get('forensic_5v', nan):.4f}** |"
+                )
+    if (results / "ablation_chart.png").exists():
+        out += ["", "![Ablation: features x training views vs a UnivFD-style baseline](results/ablation_chart.png)"]
+    return "\n".join(out)
+
+
+def leakage_section(results: Path) -> str:
+    path = results / "leakage" / "summary.json"
+    if not path.exists():
+        return MISSING
+    d = json.loads(path.read_text(encoding="utf-8"))
+    pr = d.get("probes", {})
+    ctl = d.get("control", {})
+    labels = {
+        "clip_only_4v": "CLIP-only, 4 views (UnivFD-style)",
+        "clip_only_5v": "CLIP-only, 5 views",
+        "forensic_4v": "CLIP + forensic, 4 views",
+        "forensic_5v": "CLIP + forensic, 5 views (shipped)",
+    }
+    out = [
+        f"On the held-out test slice ({d['n']} images; both classes are stored as JPEG Q95 by our own download pipeline):",
+        "",
+        "**1. Does the shortcut exist in the data?** Hand-written scalars, no model. "
+        "Separability is the AUROC of the scalar on its own, direction-agnostic; 0.5 means none.",
+        "",
+        "| probe | separability | mean real | mean fake |",
+        "|---|---:|---:|---:|",
+    ]
+    for name, v in pr.items():
+        out.append(f"| `{name}` | **{v['separability']:.4f}** | {v['mean_real']:.4f} | {v['mean_fake']:.4f} |")
+    out += [
+        "",
+        "**2. Does the model use it?** Every image re-encoded at JPEG Q95, both classes identically, "
+        "one and two extra generations (which equalises compression history), then re-scored:",
+        "",
+        "| head | clean AUC | +1 generation | +2 generations | delta (+1) |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for h, lab in labels.items():
+        if h in ctl:
+            c = ctl[h]
+            out.append(
+                f"| {lab} | {c['clean']:.4f} | {c['jpeg95_x1']:.4f} | {c['jpeg95_x2']:.4f} | {d['delta_x1'][h]:+.4f} |"
+            )
+    return "\n".join(out)
+
+
 def replace_section(text: str, name: str, body: str) -> str:
     start, end = f"<!-- {name} -->", f"<!-- /{name} -->"
     i = text.find(start)
@@ -154,6 +256,8 @@ def main() -> None:
         ("ROBUSTNESS_TABLE", robustness_section(results)),
         ("DEMO_TABLE", demo_section(results)),
         ("AB_TABLE", ab_section(results)),
+        ("ABLATION", ablation_section(results)),
+        ("LEAKAGE", leakage_section(results)),
         ("ERROR_ANALYSIS", error_section(results)),
     ):
         text = replace_section(text, name, body)

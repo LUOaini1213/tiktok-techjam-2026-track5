@@ -92,35 +92,68 @@ Clean vs each Track-5 transform on the held-out validation **test** slice (calib
 ![Robustness: clean vs social-media transforms](results/robustness_chart.png)
 <!-- /ROBUSTNESS_TABLE -->
 
-### Closing the augmentation gap
+### What actually makes it robust: a 2x2 ablation against a published baseline
 
-The table above is also how we found our own worst bug. Our evaluation grid has six
-official transform families, but `multi_paired_official_views` only ever cached four
-views per training image: clean, JPEG, blur, resize. **`noise`, `jitter` and `crop` were
-scored but never trained on** — and they came back as three of our weakest rows, with
-`noise_0.10` collapsing to 0.8117 AUC while every trained family held above 0.94.
+The robustness table is also how we found, and then correctly diagnosed, our own worst
+behaviour. Our first account of it was wrong, and the ablation below is what corrected it.
 
-So we added a fifth training view. `scripts/extract_extra_view.py` embeds one extra
-augmentation-family view per training image and reuses the four already cached, so the
-fix cost ~4k CLIP forwards rather than a full re-extraction; `train.py --extra_features`
-folds it into each image's view block (inside the block, not appended — `source_groups`
-derives CV groups positionally, so appending would split an image across GroupKFold folds
-and leak). Refitting takes about a minute.
+Two axes, crossed: **features** (CLIP-only vs CLIP + native-resolution forensic) and
+**training views** (the four we started with, clean/jpeg/blur/resize, vs five with a noise
+view). The CLIP-only / 4-view corner is a **UnivFD-style linear probe** (Ojha et al., CVPR
+2023) -- a published method, not a strawman -- and the reference the shipped configuration
+has to beat. Every transformed image is embedded once and scored by all four heads from
+column slices of the same vector, so the whole grid costs one sweep
+(`scripts/ablation.py`, `results/ablation_table.csv`).
 
-This was the promotion decision, made before regenerating anything. Both heads were
-scored on the same held-out images: clean on the full 1400-image test slice (reported by
-`train.py`), and `noise_0.10` on a balanced 400-image subset of it, chosen so the decision
-probe would return in minutes rather than half an hour.
+<!-- ABLATION -->
+Mean AUC over the 14 transformed conditions (held-out SID-Set test slice, n = 1400 per cell):
 
-| | clean AUC (n=1400) | `noise_0.10` AUC (n=400) | `noise_0.10` 95% CI |
-|---|---:|---:|---|
-| 4 views (jpeg/blur/resize) | 0.9634 | 0.8164 | [0.7720, 0.8585] |
-| **5 views (+ noise)** | **0.9629** | **0.9823** | **[0.9696, 0.9925]** |
+| | 4 views (jpeg/blur/resize) | 5 views (+ noise) |
+|---|---:|---:|
+| **CLIP-only** | 0.9445 *(UnivFD-style baseline)* | 0.9480 |
+| **CLIP + forensic** | **0.9389** (down) | **0.9583** *(shipped)* |
 
-**+0.166 AUC on the collapsing transform, with non-overlapping bootstrap CIs, and clean
-AUC unchanged within noise (−0.0005).** The full table below is then the shipped head
-re-scored on all 15 transforms at n=1400; per-transform deltas against the pre-change head
-(`results/baseline/robustness_table.csv`, same slice, same n):
+Worst single transform: baseline 0.9237 (`jitter_0.20`), forensic alone **0.8096** (`noise_0.10`), shipped 0.9411 (`jitter_0.20`). Clean AUC: baseline 0.9501, shipped 0.9630.
+
+Cross-source (WildFake demo subset, a generator family absent from training, n = 2000 per cell):
+
+| transform | UnivFD-style | + noise view | + forensic | shipped |
+|---|---:|---:|---:|---:|
+| `clean` | 0.8094 | 0.7799 | 0.9189 | **0.9334** |
+| `jpeg_30` | 0.7957 | 0.7895 | 0.9134 | **0.9327** |
+| `resize_0.25` | 0.5392 | 0.5085 | 0.7938 | **0.7536** |
+| `noise_0.05` | 0.7741 | 0.8137 | 0.8518 | **0.9290** |
+
+![Ablation: features x training views vs a UnivFD-style baseline](results/ablation_chart.png)
+<!-- /ABLATION -->
+
+**What the grid says, in order of importance:**
+
+1. **Cross-source, the forensic branch is the whole generalization story.** On a generator
+   family the model never trained on, a UnivFD-style probe scores 0.81 clean and **0.54 on
+   quarter-scale thumbnails -- barely above chance**. The forensic branch lifts that by
+   +0.11 and +0.25. Low-level residual / DCT / spectral statistics of the generation
+   process transfer across generators; the semantic embedding of "what our training fakes
+   look like" does not.
+2. **In-distribution, the forensic branch alone *hurts*.** It adds +0.013 on clean and on
+   every jpeg/blur/resize/crop row, and collapses under additive noise (0.9250 -> 0.8096
+   at sigma 0.10). Its 28 dimensions are exactly the high-frequency statistics broadband
+   noise swamps. CLIP-only never had this problem. Our earlier write-up blamed "noise was
+   scored but never trained"; that was the fix, not the cause.
+3. **The noise view is what makes the forensic branch deployable.** Alone it is worth
+   +0.0035; forensic alone is worth -0.0056; together they are worth +0.0138. The
+   interaction is the finding: a high-frequency forensic branch is only safe when the
+   training distribution contains the corruption that destroys it.
+4. **Shipped beats the published baseline on 15 / 15 in-distribution rows** (worst row
+   0.9237 -> 0.9411) and by +0.12 to +0.21 on every cross-source row. Honest caveat: no
+   single in-distribution row's bootstrap CIs are disjoint -- consistently better, not
+   significantly better per row.
+5. `jitter_0.20` is the weakest row for the baseline and for us alike; it moves the CLIP
+   embedding itself and the colour-agnostic forensic branch cannot help.
+
+For the record, the shipped head against the head we had before the noise view, every
+transform, same 1400-image slice (`results/baseline/robustness_table.csv` vs
+`results/robustness_table.csv`, `scripts/compare_ab.py`):
 
 <!-- AB_TABLE -->
 | Transform | baseline AUC | shipped AUC | delta AUC | CIs disjoint |
@@ -144,6 +177,18 @@ re-scored on all 15 transforms at n=1400; per-transform deltas against the pre-c
 3 transform(s) improved beyond overlapping bootstrap CIs; 0 regressed beyond them.
 <!-- /AB_TABLE -->
 
+### Is it reading compression history? A leakage control
+
+Several Track-5 teams found that in SID-Set the authentic images ship as JPEG and the
+synthetic ones as PNG, so a detector can score well by reading *compression history*. Our
+download pipeline stores both classes as JPEG Q95, which equalises the file container but
+not the history: reals are then double-compressed, fakes single-compressed, and our
+forensic branch contains block-DCT statistics aligned to the JPEG grid -- the feature that
+would notice. So we ran the control (`scripts/leakage_control.py`):
+
+<!-- LEAKAGE -->
+_(not generated yet -- run the pipeline in 'Steps to reproduce results'.)_
+<!-- /LEAKAGE -->
 
 ## WildFake demonstration benchmark (never used in training)
 

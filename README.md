@@ -1,10 +1,51 @@
 # RepostGuard
 
-TikTok TechJam 2026 Track 5 — **Robust Detection of AI-Generated Images Under Real-World Transformations**.
+[![tests](https://github.com/LUOaini1213/tiktok-techjam-2026-track5/actions/workflows/tests.yml/badge.svg)](https://github.com/LUOaini1213/tiktok-techjam-2026-track5/actions/workflows/tests.yml)
 
-**[Demo video (3 min)](https://youtu.be/wbeGLieLZ9c)** · [Robustness table](results/robustness_table.csv) · [A/B vs pre-change head](results/ab_summary.csv)
+**AI-generated-image detection that is scored on the repost, not the original.** A frozen
+CLIP ViT-B/32 (88M parameters, CPU-only) plus a native-resolution forensic branch, evaluated
+on all 15 real-world transforms a social platform applies -- JPEG, thumbnail, blur, noise,
+colour jitter, crop -- with bootstrap confidence intervals, a published baseline, a 2x2
+ablation that explains *why* it holds, and a leakage control that shows it is not cheating.
 
-AIGC detectors that look strong on clean lab images often collapse after a TikTok-style repost: JPEG re-encode, thumbnail resize, filter jitter, or avatar crop. RepostGuard is a hackathon-scale detector that treats those transforms as the actual test, not an afterthought.
+| | AUC | TPR@1%FPR |
+|---|---:|---:|
+| clean | 0.963 | 0.546 |
+| mean over 14 transforms | 0.958 | 0.496 |
+| worst transform (colour jitter) | 0.941 | 0.350 |
+| real vs fully-synthetic only, mean over transforms | 0.983 | 0.650 |
+| cross-source, unseen generator family (WildFake), clean | 0.933 | -- |
+
+Held-out 1400-image slice of SID-Set, calibration images excluded. Beats a UnivFD-style
+linear probe on 15 / 15 transforms in-distribution and by +0.12 to +0.25 AUC on an unseen
+generator family. Built solo for TikTok TechJam 2026 (Track 5) in about four days on a
+laptop with no GPU; the analysis after the deadline is on the same branch history.
+
+![Ablation: features x training views vs a UnivFD-style baseline](results/ablation_chart.png)
+
+**Three findings worth reading this repo for**
+
+1. **The forensic branch is the entire cross-source generalisation** -- a CLIP-only probe
+   scores 0.54 on thumbnails of an unseen generator (chance is 0.5); the forensic branch
+   lifts it to 0.79.
+2. **The same branch is what collapses under noise** (0.925 -> 0.810 at sigma 0.10), and a
+   noise training view is what makes it safe. Alone they are worth -0.006 and +0.004; together
+   +0.014. The interaction is the result, and it corrected our own first explanation.
+3. **It is not reading JPEG history.** Re-encoding both classes identically moves every head
+   by <= +0.0009 AUC; a bare blockiness scalar separates the classes at only 0.586.
+
+**Quickstart**
+
+```bat
+python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+python -m pip install -r requirements.txt
+python infer.py --input_dir samples --output preds.json     :: directory in, JSON out
+```
+
+Weights ship in the repo (`artifacts/repostguard.joblib`, 18 KB on top of the public CLIP
+checkpoint). `python app.py` opens a Gradio demo with JPEG / blur / noise / crop sliders;
+the [3-minute video](https://youtu.be/wbeGLieLZ9c) is generated from the committed results
+by `scripts/make_video.py`.
 
 ## Project overview
 
@@ -17,12 +58,12 @@ AIGC detectors that look strong on clean lab images often collapse after a TikTo
 
 **Training data:** SID-Set (`saberzl/SID_Set`) binary labels: `0` real vs `1` AIGC-positive (`1` full-synthetic **and** `2` tampered, upweighted 5×). Official JPEG/blur/resize/**noise** views plus clean/degraded consistency rows — 5 views per image. The noise view was added after the robustness table exposed a collapse under additive noise; the 2×2 ablation below shows the forensic branch caused that collapse and the noise view is what makes the branch safe (see *What actually makes it robust*). The official WildFake demonstration subset is **never used for training** — it is only a reference benchmark (see below).
 
-## Problem-statement alignment
+## Scope
 
-- **Transform grid matches exactly.** Our evaluation presets are precisely the Track-5 transforms: JPEG 90/70/50/30, Gaussian blur σ 0.5/1.0/2.0, resize 0.5×/0.25× then upsample, Gaussian noise σ 0.02/0.05/0.10, color jitter ±20%, center crop 80% (`src/augment.py`).
-- **Under 2B parameters.** Frozen CLIP ViT-B/32 (~88M) + a linear head.
-- **Submission contract.** `python infer.py --input_dir PATH --output preds.json` emits `[{"image_path", "pred"∈[0,1]}]`, one row per input file, robust to unreadable/truncated files.
-- **Allowed data only.** Trained on SID-Set (a listed, properly licensed resource). WildFake is used strictly as a demonstration benchmark, never for training.
+- **Transform grid.** The evaluation presets are the fifteen official Track-5 transforms: JPEG 90/70/50/30, Gaussian blur σ 0.5/1.0/2.0, resize 0.5×/0.25× then upsample, Gaussian noise σ 0.02/0.05/0.10, color jitter ±20%, center crop 80% (`src/augment.py`).
+- **Size.** Frozen CLIP ViT-B/32 (~88M) + a linear head; the competition cap was 2B.
+- **Interface.** `python infer.py --input_dir PATH --output preds.json` emits `[{"image_path", "pred"∈[0,1]}]`, one row per input file, robust to unreadable/truncated files.
+- **Data.** Trained on SID-Set only. The WildFake demonstration subset is a cross-source benchmark and is never used for training.
 
 ## Setup & installation
 
@@ -309,15 +350,31 @@ python scripts/train.py
 
 ViT-B/32 CPU extraction runs ≈20–60 img/s; a modest GPU (e.g. GTX 1650, fp16) cuts extraction from hours to minutes. For a stronger encoder, swap `clip_model_id` to `openai/clip-vit-large-patch14` in `configs/default.yaml` (~15–40 img/s fp16 on a GTX 1650, still well under 2B); the pre-projection variant becomes 1024-D and everything else is unchanged.
 
-## Team member contributions
+## Authorship
 
-- **Member A** — model, dual-CLIP features, native forensic branch, robustness evaluation, calibration.
-- **Member B** — Gradio demo, demonstration-benchmark eval, video, Devpost write-up.
+Solo project (one author in the git history). Model, forensic branch, evaluation harness,
+ablation, leakage control, video pipeline and write-up are all in this repository; the
+commit messages record what was found when, including the two explanations that turned
+out to be wrong.
 
 ## Tools
 
 Python, PyTorch (CPU or CUDA), Hugging Face `transformers` (CLIP) + `datasets` (SID-Set / demo subset streaming), scikit-learn, OpenCV, SciPy, NumPy, pandas, matplotlib, Gradio.
 
+## Repository layout
+
+```
+infer.py                 directory -> preds.json (the shipped entry point)
+app.py                   Gradio demo with transform sliders
+src/                     features (CLIP + forensic), augment (15 transforms), eval, error analysis
+scripts/                 data download, feature cache, train, tables, ablation, leakage control, video
+results/                 every table in the README, per-image scores, baseline snapshot
+artifacts/               shipped head (repostguard.joblib) + WEIGHTS.txt
+docs/                    findings write-up, competitor review, submission sheet, video script
+tests/                   35 tests; dataset-dependent ones skip on a clean checkout
+```
+
 ## License
 
-Hackathon prototype. SID-Set, the WildFake demonstration subset, and CLIP weights keep their upstream licenses.
+No license file yet: the code is shared for reading and reproduction. SID-Set, the WildFake
+demonstration subset and the CLIP weights keep their upstream licenses.

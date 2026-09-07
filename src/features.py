@@ -12,7 +12,7 @@ from PIL import Image
 from scipy.fftpack import dct
 from transformers import AutoImageProcessor, AutoModel, CLIPModel, CLIPProcessor
 
-from .augment import jpeg_compress, down_up_resize, to_rgb
+from .augment import down_up_resize, jpeg_compress, multi_crops, to_rgb
 
 FORENSIC_DIM = 28
 CLIP_DIM = 512  # projected (visual_projection) feature width
@@ -249,12 +249,15 @@ def _tta_clip_means(
     use_tta: bool,
     tta_jpeg_quality: int,
     tta_resize_scale: float,
+    extra_views: "Sequence[Image.Image] | None" = None,
 ) -> dict[str, np.ndarray]:
     """TTA-averaged, re-L2-normalized CLIP means for BOTH variants from one view set."""
     views = [image]
     if use_tta:
         views.append(jpeg_compress(image, tta_jpeg_quality))
         views.append(down_up_resize(image, tta_resize_scale))
+    if extra_views:
+        views.extend(extra_views)
     dual = clip_embed_batch_dual(views, model_id=model_id)
     means = {}
     for variant, feats in dual.items():
@@ -273,6 +276,7 @@ def embed_one_dual(
     tta_jpeg_quality: int = 70,
     tta_resize_scale: float = 0.5,
     variants: "Sequence[str] | None" = None,
+    crops: int = 0,
 ) -> dict[str, np.ndarray]:
     """Fused feature for EVERY variant: pre / proj / dino / fuse, each + forensic.
 
@@ -282,11 +286,15 @@ def embed_one_dual(
     """
     image = to_rgb(image)
     wanted = tuple(variants) if variants else FEATURE_VARIANTS
-    means = _tta_clip_means(image, model_id, use_tta, tta_jpeg_quality, tta_resize_scale)
+    extra = multi_crops(image, crops) if crops else []
+    means = _tta_clip_means(image, model_id, use_tta, tta_jpeg_quality, tta_resize_scale, extra)
     # DINOv2 is only run when a requested variant needs it, so a head shipped on a pure
-    # CLIP variant keeps its original per-image cost. Clean view only: no TTA for the
-    # expensive tower.
-    dino = dino_embed_batch([image])[0] if any(v in ("dino", "fuse") for v in wanted) else None
+    # CLIP variant keeps its original per-image cost. Clean view (+ crops) only: no
+    # JPEG/resize TTA for the expensive tower.
+    dino = None
+    if any(v in ("dino", "fuse") for v in wanted):
+        d = dino_embed_batch([image] + extra).mean(axis=0)
+        dino = (d / (np.linalg.norm(d) + 1e-8)).astype(np.float32)
     forensic = forensic_vector(image) if use_forensic else np.zeros(FORENSIC_DIM, dtype=np.float32)
     bases = {"pre": means["pre"], "proj": means["proj"]}
     if dino is not None:
@@ -303,6 +311,7 @@ def embed_one(
     tta_jpeg_quality: int = 70,
     tta_resize_scale: float = 0.5,
     variant: str = DEFAULT_FEATURE_VARIANT,
+    crops: int = 0,
 ) -> np.ndarray:
     """Single-variant fused feature (default pre-projection). Shares embed_one_dual."""
     return embed_one_dual(
@@ -313,6 +322,7 @@ def embed_one(
         tta_jpeg_quality=tta_jpeg_quality,
         tta_resize_scale=tta_resize_scale,
         variants=(variant,),
+        crops=crops,
     )[variant]
 
 

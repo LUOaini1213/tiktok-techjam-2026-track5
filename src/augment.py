@@ -97,6 +97,24 @@ def center_crop(image: Image.Image, ratio: float = CENTER_CROP) -> Image.Image:
     return cropped.resize((w, h), Image.BILINEAR)
 
 
+def multi_crops(image: Image.Image, n: int, scale: float = 0.8) -> list[Image.Image]:
+    """`n` crops at `scale` of the image, resized back to the original size.
+
+    n=1 -> centre; n=2..4 -> that many corners; n=5 -> four corners + centre. Resizing
+    back keeps every downstream preprocessor (CLIP's 224 shortest-side, the native-scale
+    forensic crop) exactly as it is for the full view.
+    """
+    if n <= 0:
+        return []
+    image = to_rgb(image)
+    w, h = image.size
+    cw, ch = max(1, int(round(w * scale))), max(1, int(round(h * scale)))
+    corners = [(0, 0), (w - cw, 0), (0, h - ch), (w - cw, h - ch)]
+    centre = ((w - cw) // 2, (h - ch) // 2)
+    boxes = [centre] if n == 1 else corners[: min(n, 4)] + ([centre] if n >= 5 else [])
+    return [image.crop((l, t, l + cw, t + ch)).resize((w, h), Image.BILINEAR) for l, t in boxes]
+
+
 TRANSFORM_TABLE = {
     "jpeg": lambda img, q: jpeg_compress(img, q),
     "blur": lambda img, s: gaussian_blur(img, s),

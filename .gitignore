@@ -60,3 +60,5 @@ build/*.png
 
 results/_abl/
 results/_abl_demo/
+
+results/_parts_crops/

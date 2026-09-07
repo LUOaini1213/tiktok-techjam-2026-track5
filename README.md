@@ -56,7 +56,7 @@ by `scripts/make_video.py`.
 - **Test-time augmentation (TTA).** Inference averages the original view with a JPEG-70 view and a 0.5× down/up view; the averaged CLIP embedding is re-L2-normalized so its scale does not depend on the view count. Train, eval, and infer all go through the **same** `embed_for_score` path so cached features match scored features exactly.
 - **Sigmoid calibration.** After the head is fit, we sigmoid-calibrate it on a group-disjoint 30% slice of the validation set and report metrics only on the held-out 70% test slice, so `pred` is a usable P(AIGC) probability rather than a raw margin.
 
-**Training data:** SID-Set (`saberzl/SID_Set`) binary labels: `0` real vs `1` AIGC-positive (`1` full-synthetic **and** `2` tampered, upweighted 5×). Official JPEG/blur/resize/**noise** views plus clean/degraded consistency rows — 5 views per image. The noise view was added after the robustness table exposed a collapse under additive noise; the 2×2 ablation below shows the forensic branch caused that collapse and the noise view is what makes the branch safe (see *What actually makes it robust*). The official WildFake demonstration subset is **never used for training** — it is only a reference benchmark (see below).
+**Training data:** SID-Set (`saberzl/SID_Set`) binary labels: `0` real vs `1` AIGC-positive (`1` full-synthetic **and** `2` tampered, upweighted 5×). One degraded view per official family — JPEG, blur, resize, **noise**, **jitter** — plus the clean view and clean/degraded consistency rows: 6 views per image. The noise and jitter views were added after the robustness table showed the families we scored but never trained on were the weakest rows; the 2×2 ablation below shows the forensic branch caused the noise collapse and the noise view is what makes the branch safe (see *What actually makes it robust*). The official WildFake demonstration subset is **never used for training** — it is only a reference benchmark (see below).
 
 ## Scope
 
@@ -79,12 +79,14 @@ python -m pip install -r requirements.txt
 ```bat
 python scripts/make_samples.py                              :: tiny fixtures
 python scripts/download_data.py --train_per_class 2000 --val_per_class 1000
-python scripts/extract_features.py --split train --augment  :: caches BOTH CLIP variants
+:: feature cache: 6 views/train image (clean/jpeg/blur/resize/noise/jitter), variants pre/proj/dino/fuse.
+:: One process per shard; each holds CLIP + DINOv2 (~1.1 GB). Merge refuses a short cache.
+for /L %i in (0,1,4) do start /b python scripts/extract_features.py --split train --augment --shard %i/5 --out artifacts/_feat/train_%i.npz
+python scripts/extract_features.py --merge artifacts/_feat/train_0.npz artifacts/_feat/train_1.npz artifacts/_feat/train_2.npz artifacts/_feat/train_3.npz artifacts/_feat/train_4.npz --out artifacts/features_train.npz
 python scripts/extract_features.py --split val
-python scripts/extract_extra_view.py --family noise --split train --shard 0/1 --out artifacts/_extra/noise.npz
-python scripts/extract_extra_view.py --merge artifacts/_extra/noise.npz --out artifacts/features_train_noise.npz
-python scripts/train.py --extra_features artifacts/features_train_noise.npz   :: A/B CV, calibrate, write bundle
+python scripts/train.py --variants proj,dino,fuse --cv_splits 3   :: GroupKFold A/B over variants, calibrate, write bundle
 python scripts/make_tables.py                               :: robustness table + CIs
+python scripts/make_tables.py --crops 4                     :: eval-time multi-crop TTA variant of the table
 python scripts/make_chart.py                                :: robustness bar chart PNG
 python scripts/error_analysis.py                            :: FP/FN note
 python scripts/eval_demo.py                                 :: WildFake demonstration benchmark

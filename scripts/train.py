@@ -52,6 +52,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Write the bundle here instead of artifacts/repostguard.joblib (A/B runs)",
     )
+    p.add_argument(
+        "--variants",
+        type=str,
+        default=None,
+        help="Comma-separated subset of feature variants to A/B (default: every variant in the cache)",
+    )
     return p.parse_args()
 
 
@@ -207,8 +213,13 @@ def main() -> None:
 
     # ---- A/B: GroupKFold CV AUC per variant ----
     cv_scores = {}
-    for v in FEATURE_VARIANTS:
+    wanted = [v.strip() for v in args.variants.split(",")] if args.variants else list(FEATURE_VARIANTS)
+    unknown = [v for v in wanted if v not in FEATURE_VARIANTS]
+    if unknown:
+        raise SystemExit(f"Unknown variant(s) {unknown}; choose from {FEATURE_VARIANTS}")
+    for v in wanted:
         if v not in Xtr:
+            print(f"variant {v} not in the feature cache; skipping")
             continue
         cv_scores[v] = cv_auc(
             Xtr[v], ytr, sidtr, groups, vpi, C=args.C, n_splits=args.cv_splits

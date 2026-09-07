@@ -1,15 +1,19 @@
-"""Extract CLIP+forensic features (both pre/proj variants). Resume-safe npz per split.
+"""Extract fused features for every variant (pre / proj / dino / fuse). Resume-safe, shardable.
 
-The long CPU run is checkpointed: every `--checkpoint_every` source images the
-accumulated features are atomically written to features_<split>.partial.npz, and a
-fresh run resumes from that partial instead of starting over (a killed 60-minute run
-previously lost everything because the npz was only written at the end). Augment views
-use a PER-IMAGE seeded RNG so the extracted features are identical no matter where a
-resume happened.
+Two protections for a long CPU run:
+
+* Checkpointing -- every `--checkpoint_every` source images the accumulated features are
+  atomically written to a .partial.npz and a fresh run resumes from it. Augment views use a
+  PER-IMAGE seeded RNG, so the extracted features are identical no matter where a resume
+  happened.
+* Sharding -- `--shard i/N` embeds a contiguous row range into its own npz; `--merge` joins
+  the shards in order and refuses to write a short cache. One process per core-group is
+  the only way a 16k-image, 6-view extraction fits in an afternoon on a CPU box.
 
 Usage:
-  python scripts/extract_features.py --split train --augment
-  python scripts/extract_features.py --split val
+  python scripts/extract_features.py --split train --augment --shard 0/5 --out artifacts/_feat/train_0.npz
+  python scripts/extract_features.py --merge artifacts/_feat/train_*.npz --out artifacts/features_train.npz
+  python scripts/extract_features.py --split val                       # single process, no views
 """
 
 from __future__ import annotations
@@ -26,7 +30,7 @@ from tqdm import tqdm
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.augment import multi_paired_official_views
+from src.augment import PAIR_FAMILIES, multi_paired_official_views
 from src.config import load_config
 from src.data import records_from_folders
 from src.features import FEATURE_VARIANTS, get_device
@@ -38,17 +42,11 @@ from src.train_signal import sid_label_from_path
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument("--split", choices=["train", "val", "both"], default="both")
-    p.add_argument(
-        "--augment",
-        action="store_true",
-        help="Add official JPEG+blur+resize views per train image",
-    )
-    p.add_argument(
-        "--checkpoint_every",
-        type=int,
-        default=150,
-        help="Write a resumable partial npz every N source images",
-    )
+    p.add_argument("--augment", action="store_true", help="One degraded view per official family for train")
+    p.add_argument("--checkpoint_every", type=int, default=150, help="Resumable partial npz every N images")
+    p.add_argument("--shard", default=None, help="i/N contiguous row shard (requires --out)")
+    p.add_argument("--out", type=Path, default=None, help="Output npz (default artifacts/features_<split>.npz)")
+    p.add_argument("--merge", nargs="+", type=Path, default=None, help="Merge shard npz files into --out")
     return p.parse_args()
 
 
@@ -59,45 +57,52 @@ def _atomic_savez(path: Path, **arrays) -> None:
     os.replace(tmp, path)
 
 
-def _load_partial(part_path: Path, views_per_image: int, n_rows_total: int):
-    """Return (chunks, labels, sids, start_image) from a compatible partial, else fresh."""
-    fresh = ({v: [] for v in FEATURE_VARIANTS}, [], [], 0)
+def _load_partial(part_path: Path, views_per_image: int, n_rows_total: int, lo: int):
+    """Return (chunks, labels, sids, next_image) from a compatible partial, else fresh."""
+    fresh = ({v: [] for v in FEATURE_VARIANTS}, [], [], lo)
     if not part_path.exists():
         return fresh
     try:
         d = np.load(part_path)
-        if int(d["views_per_image"][0]) != views_per_image:
-            print("partial has different views_per_image; restarting split from scratch")
+        if int(d["views_per_image"][0]) != views_per_image or int(d["n_rows_total"][0]) != n_rows_total:
+            print("partial has a different layout; restarting this shard from scratch")
+            return fresh
+        if any(f"X_{v}" not in d.files for v in FEATURE_VARIANTS):
+            print("partial lacks a feature variant; restarting this shard from scratch")
             return fresh
         n_done = int(d["n_images_done"][0])
-        if n_done <= 0 or n_done > n_rows_total:
-            return fresh
         chunks = {v: [d[f"X_{v}"]] for v in FEATURE_VARIANTS}
-        labels = d["y"].tolist()
-        sids = d["sid"].tolist()
-        print(f"resuming from partial checkpoint: {n_done} images already embedded")
-        return chunks, labels, sids, n_done
-    except Exception as exc:
-        print(f"could not read partial ({exc!r}); restarting split from scratch")
+        print(f"resuming from partial checkpoint: {n_done - lo} images already embedded")
+        return chunks, list(d["y"]), list(d["sid"]), n_done
+    except Exception as exc:  # noqa: BLE001
+        print(f"could not read partial ({exc!r}); restarting this shard from scratch")
         return fresh
 
 
-def extract_split(cfg, split: str, augment: bool, checkpoint_every: int = 150) -> Path:
+def extract_split(cfg, split: str, augment: bool, checkpoint_every: int, shard: str | None, out: Path | None) -> Path:
     device = get_device()
-    print(f"embed_device={device}")
     rows = [r for r in records_from_folders(cfg["data_dir"]) if r["split"] == split]
     if not rows:
         raise SystemExit(f"No images under {cfg['data_dir']}/{split}/{{real,aigc}}")
 
-    views_per_image = 4 if (augment and split == "train") else 1
+    i_shard, n_shard = (0, 1)
+    if shard:
+        i_shard, n_shard = (int(x) for x in shard.split("/"))
+        if out is None:
+            raise SystemExit("--shard requires --out")
+    bounds = np.linspace(0, len(rows), n_shard + 1).astype(int)
+    lo, hi = int(bounds[i_shard]), int(bounds[i_shard + 1])
+
+    views_per_image = (1 + len(PAIR_FAMILIES)) if (augment and split == "train") else 1
     use_tta = bool(cfg.get("use_tta", True))
-    print(f"score_path=embed_for_score_dual use_tta={use_tta} views_per_image={views_per_image}")
+    print(f"embed_device={device} split={split} rows=[{lo},{hi}) of {len(rows)} views_per_image={views_per_image} "
+          f"variants={FEATURE_VARIANTS} use_tta={use_tta}")
 
-    out = cfg["artifacts_dir"] / f"features_{split}.npz"
-    part_path = cfg["artifacts_dir"] / f"features_{split}.partial.npz"
+    out = out or (cfg["artifacts_dir"] / f"features_{split}.npz")
     out.parent.mkdir(parents=True, exist_ok=True)
+    part_path = out.with_suffix(".partial.npz")
 
-    feat_chunks, labels, sids, start = _load_partial(part_path, views_per_image, len(rows))
+    feat_chunks, labels, sids, start = _load_partial(part_path, views_per_image, len(rows), lo)
 
     def checkpoint(n_images_done: int) -> None:
         _atomic_savez(
@@ -106,20 +111,17 @@ def extract_split(cfg, split: str, augment: bool, checkpoint_every: int = 150) -
             y=np.array(labels, dtype=np.int64),
             sid=np.array(sids, dtype=np.int64),
             views_per_image=np.array([views_per_image]),
+            n_rows_total=np.array([len(rows)]),
             n_images_done=np.array([n_images_done]),
         )
 
-    for i in tqdm(range(start, len(rows)), initial=start, total=len(rows), desc=f"feat-{split}"):
+    for i in tqdm(range(start, hi), initial=start - lo, total=hi - lo, desc=f"feat-{split}[{i_shard}/{n_shard}]"):
         row = rows[i]
         im = open_image(Path(row["path"]))
         sid = sid_label_from_path(row["path"])
-        # Per-image RNG: augment views for image i are the same whether or not a resume
-        # happened before it (a shared sequential RNG would desync on resume).
+        # Per-image RNG: the views for image i are the same whether or not a resume happened.
         rng = random.Random(f"{cfg['seed']}:{split}:{i}")
-        if augment and split == "train":
-            views = [v for v, _name in multi_paired_official_views(im, rng)]
-        else:
-            views = [im]
+        views = [v for v, _name in multi_paired_official_views(im, rng)] if views_per_image > 1 else [im]
         duals = [
             embed_for_score_dual(
                 v,
@@ -135,33 +137,52 @@ def extract_split(cfg, split: str, augment: bool, checkpoint_every: int = 150) -
             feat_chunks[v].append(np.stack([d[v] for d in duals]))
         labels.extend([row["label"]] * len(views))
         sids.extend([sid] * len(views))
-
         done = i + 1
-        if done < len(rows) and (done - start) % checkpoint_every == 0:
+        if done < hi and (done - start) % checkpoint_every == 0:
             checkpoint(done)
 
-    feats = {
-        v: (np.concatenate(feat_chunks[v], axis=0) if feat_chunks[v] else np.zeros((0, 1)))
-        for v in FEATURE_VARIANTS
-    }
-    y = np.array(labels, dtype=np.int64)
-    sid_arr = np.array(sids, dtype=np.int64)
-    # X (== X_proj) kept for backward compatibility with any old reader; X_pre/X_proj new.
+    feats = {v: np.concatenate(feat_chunks[v], axis=0) for v in FEATURE_VARIANTS}
     np.savez_compressed(
         out,
-        X=feats["proj"],
-        X_pre=feats["pre"],
-        X_proj=feats["proj"],
-        y=y,
-        sid=sid_arr,
+        X=feats["proj"],  # legacy single-variant readers
+        **{f"X_{v}": feats[v] for v in FEATURE_VARIANTS},
+        y=np.array(labels, dtype=np.int64),
+        sid=np.array(sids, dtype=np.int64),
         views_per_image=np.array([views_per_image]),
+        shard_start=np.array([lo]),
+        n_rows_total=np.array([len(rows)]),
     )
     if part_path.exists():
         part_path.unlink()
-    print(
-        f"Saved pre={feats['pre'].shape} proj={feats['proj'].shape} "
-        f"sid_tampered={(sid_arr == 2).sum()} -> {out}"
+    print("Saved " + " ".join(f"{v}={feats[v].shape}" for v in FEATURE_VARIANTS) + f" -> {out}")
+    return out
+
+
+def merge(parts: list[Path], out: Path) -> Path:
+    """Concatenate shard npz files in row order; refuse to write a short cache."""
+    loaded = sorted((np.load(p) for p in parts), key=lambda d: int(d["shard_start"][0]))
+    total = int(loaded[0]["n_rows_total"][0])
+    vpi = int(loaded[0]["views_per_image"][0])
+    covered = 0
+    for d in loaded:
+        if int(d["shard_start"][0]) != covered:
+            raise SystemExit(f"shard gap/overlap: expected start {covered}, got {int(d['shard_start'][0])}")
+        if int(d["views_per_image"][0]) != vpi:
+            raise SystemExit("shards disagree on views_per_image")
+        covered += len(d["y"]) // vpi
+    if covered != total:
+        raise SystemExit(f"shards cover {covered} of {total} images -- refusing to write a short cache")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    feats = {v: np.concatenate([d[f"X_{v}"] for d in loaded], axis=0) for v in FEATURE_VARIANTS}
+    np.savez_compressed(
+        out,
+        X=feats["proj"],
+        **{f"X_{v}": feats[v] for v in FEATURE_VARIANTS},
+        y=np.concatenate([d["y"] for d in loaded]),
+        sid=np.concatenate([d["sid"] for d in loaded]),
+        views_per_image=np.array([vpi]),
     )
+    print(f"Wrote {out}: {covered} images x {vpi} views, " + " ".join(f"{v}={feats[v].shape[1]}-D" for v in FEATURE_VARIANTS))
     return out
 
 
@@ -169,9 +190,17 @@ def main() -> None:
     enable_utf8_stdout()
     args = parse_args()
     cfg = load_config()
+    if args.merge:
+        if args.out is None:
+            raise SystemExit("--merge requires --out")
+        merge(args.merge, args.out)
+        return
     splits = ["train", "val"] if args.split == "both" else [args.split]
+    if args.shard and len(splits) != 1:
+        raise SystemExit("--shard needs a single --split")
     for split in splits:
-        extract_split(cfg, split, augment=args.augment, checkpoint_every=args.checkpoint_every)
+        extract_split(cfg, split, augment=args.augment, checkpoint_every=args.checkpoint_every,
+                      shard=args.shard, out=args.out)
 
 
 if __name__ == "__main__":

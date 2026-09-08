@@ -1,5 +1,10 @@
 # Track 5 competitor review — TikTok TechJam 2026
 
+> **Status (2026-09-08).** Written against the v1 deadline build (CLIP only, 4,000 training
+> images). The repo has since moved to v2 -- 16,000 training images, a jitter training view,
+> CLIP + DINOv2-small fusion -- with every change re-measured on the same 1400 held-out images;
+> see README, *What changed after the deadline*. The field survey below is unchanged.
+
 *Surveyed 2026-09-03 during public voting ("1 more day to vote"). 130 Track 5 submissions
 enumerated via the Devpost gallery's Track #5 filter (6 pages); 13 read in full. Numbers
 are as each team reports them — protocols differ, so cross-team comparison is indicative only.*

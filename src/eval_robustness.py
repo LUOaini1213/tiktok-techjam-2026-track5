@@ -169,8 +169,12 @@ def evaluate_robustness(
     # per-class breakdown, a paired test against another head) never needs a re-run.
     # Fixed location, NOT relative to the table path: sharded runs write their part CSVs to
     # a scratch dir, and the scores must still land in one place.
+    # A truncated run (max_images) must not overwrite the full-run score files with a handful
+    # of rows, so it persists scores only into a directory the caller named explicitly.
+    persist_scores = scores_dir is not None or max_images is None
     scores_dir = Path(scores_dir) if scores_dir else cfg["results_dir"] / f"scores{suffix}"
-    scores_dir.mkdir(parents=True, exist_ok=True)
+    if persist_scores:
+        scores_dir.mkdir(parents=True, exist_ok=True)
 
     with dest.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=TABLE_FIELDS)
@@ -194,10 +198,11 @@ def evaluate_robustness(
                 y_true.append(int(row["label"]))
             y = np.array(y_true)
             s = np.array(scores)
-            np.savez_compressed(
-                scores_dir / f"{name}.npz",
-                y=y, score=s, path=np.array([Path(r["path"]).name for r in rows]),
-            )
+            if persist_scores:
+                np.savez_compressed(
+                    scores_dir / f"{name}.npz",
+                    y=y, score=s, path=np.array([Path(r["path"]).name for r in rows]),
+                )
             hard = (s >= 0.5).astype(int)
             acc = float(accuracy_score(y, hard))
             try:

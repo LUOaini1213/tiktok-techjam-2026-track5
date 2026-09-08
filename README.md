@@ -3,27 +3,32 @@
 [![tests](https://github.com/LUOaini1213/tiktok-techjam-2026-track5/actions/workflows/tests.yml/badge.svg)](https://github.com/LUOaini1213/tiktok-techjam-2026-track5/actions/workflows/tests.yml)
 
 **AI-generated-image detection that is scored on the repost, not the original.** A frozen
-CLIP ViT-B/32 (88M parameters, CPU-only) plus a native-resolution forensic branch, evaluated
-on all 15 real-world transforms a social platform applies -- JPEG, thumbnail, blur, noise,
-colour jitter, crop -- with bootstrap confidence intervals, a published baseline, a 2x2
-ablation that explains *why* it holds, and a leakage control that shows it is not cheating.
+CLIP ViT-B/32 fused with a frozen DINOv2-small (110M parameters together, CPU-only) plus a
+native-resolution forensic branch, evaluated on all 15 real-world transforms a social platform
+applies -- JPEG, thumbnail, blur, noise, colour jitter, crop -- with bootstrap confidence
+intervals, a published baseline, a 2x2 ablation that explains *why* it holds, a leakage control
+that shows it is not cheating, and a post-deadline v2 whose every change is re-measured on the
+same held-out images as the deadline build.
 
 | | AUC | TPR@1%FPR |
 |---|---:|---:|
-| clean | 0.963 | 0.546 |
-| mean over 14 transforms | 0.958 | 0.496 |
-| worst transform (colour jitter) | 0.941 | 0.350 |
-| real vs fully-synthetic only, mean over transforms | 0.983 | 0.650 |
-| cross-source, unseen generator family (WildFake), clean | 0.933 | -- |
+| clean | 0.981 | 0.734 |
+| mean over 14 transforms | 0.977 | 0.645 |
+| worst transform (0.25x thumbnail) | 0.968 | 0.604 |
+| real vs fully-synthetic only, mean over transforms | 0.989 | 0.763 |
+| cross-source, unseen generator family (WildFake), clean | 0.966 | -- |
 
-Held-out 1400-image slice of SID-Set, calibration images excluded. Beats a UnivFD-style
-linear probe on 15 / 15 transforms in-distribution and by +0.12 to +0.25 AUC on an unseen
-generator family. Built solo for TikTok TechJam 2026 (Track 5) in about four days on a
-laptop with no GPU; the analysis after the deadline is on the same branch history.
+v2 numbers on the held-out 1400-image slice of SID-Set, calibration images excluded. The
+deadline build (v1: clean 0.963, mean 0.958, worst 0.941) already beat a UnivFD-style linear
+probe on 15 / 15 transforms in-distribution and by +0.12 to +0.25 AUC on an unseen generator
+family; v2 then improves every one of the 15 conditions on the same images (+0.019 AUC on
+average, 14 of 15 beyond overlapping bootstrap CIs). Built solo for TikTok TechJam 2026
+(Track 5) in about four days on a laptop with no GPU; everything after the deadline is on the
+same branch history.
 
 ![Ablation: features x training views vs a UnivFD-style baseline](results/ablation_chart.png)
 
-**Three findings worth reading this repo for**
+**Four findings worth reading this repo for**
 
 1. **The forensic branch is the entire cross-source generalisation** -- a CLIP-only probe
    scores 0.54 on thumbnails of an unseen generator (chance is 0.5); the forensic branch
@@ -33,6 +38,10 @@ laptop with no GPU; the analysis after the deadline is on the same branch histor
    +0.014. The interaction is the result, and it corrected our own first explanation.
 3. **It is not reading JPEG history.** Re-encoding both classes identically moves every head
    by <= +0.0009 AUC; a bare blockiness scalar separates the classes at only 0.586.
+4. **Four times the data plus a second frozen encoder is worth +0.019 AUC everywhere.** The
+   post-deadline v2 (8000 images per class, a jitter training view, CLIP + DINOv2-small fusion
+   chosen by CV) lifts all 15 conditions by +0.013 to +0.027 AUC and the mean TPR at 1% FPR
+   from 0.50 to 0.65; the previously worst row, colour jitter, gains the most.
 
 **Quickstart**
 
@@ -42,26 +51,26 @@ python -m pip install -r requirements.txt
 python infer.py --input_dir samples --output preds.json     :: directory in, JSON out
 ```
 
-Weights ship in the repo (`artifacts/repostguard.joblib`, 18 KB on top of the public CLIP
-checkpoint). `python app.py` opens a Gradio demo with JPEG / blur / noise / crop sliders;
+Weights ship in the repo (`artifacts/repostguard.joblib`, 28 KB on top of the public CLIP and
+DINOv2-small checkpoints). `python app.py` opens a Gradio demo with JPEG / blur / noise / crop sliders;
 the [3-minute video](https://youtu.be/wbeGLieLZ9c) is generated from the committed results
 by `scripts/make_video.py`.
 
 ## Project overview
 
-**Model (well under the 2B parameter limit):** frozen OpenAI CLIP `ViT-B/32` (~88M) + a 28-D forensic vector + a logistic-regression head.
+**Model (well under the 2B parameter limit):** frozen OpenAI CLIP `ViT-B/32` (~88M) + frozen `facebook/dinov2-small` CLS (~22M) + a 28-D forensic vector + a logistic-regression head. (The deadline build, v1, used CLIP alone; see *What changed after the deadline*.)
 
-- **CLIP features, A/B-selected.** From a single CLIP forward we cache **two** image-feature variants and let cross-validation pick the winner: the **pre-projection** feature (`vision_model(...).pooler_output`, the post-LayerNorm CLS token, 768-D) and the **projected** feature (`visual_projection(pooler_output)`, 512-D, UnivFD's usual probe input). Pre-projection features usually win for linear-probe fake detection (Cozzolino et al., arXiv:2312.00195), but we verify it by GroupKFold(5) CV AUC on our own data rather than assuming.
+- **Feature variant, A/B-selected by cross-validation.** From a single CLIP forward we cache the **pre-projection** feature (`vision_model(...).pooler_output`, the post-LayerNorm CLS token, 768-D) and the **projected** feature (`visual_projection(pooler_output)`, 512-D, UnivFD's usual probe input); v2 adds the **DINOv2-small CLS** embedding (384-D) and the **fusion** of CLIP-proj + DINOv2 (896-D). Which variant ships is not asserted, it is picked by GroupKFold CV AUC on our own data: v1 chose `proj` (0.9536 vs `pre` 0.9414, 5-fold), v2 chose `fuse` (0.9806 vs `proj` 0.9776 vs DINOv2-only 0.9244, 3-fold on 96 000 rows). Pre-projection features are reported to win for linear-probe fake detection (Cozzolino et al., arXiv:2312.00195); on this data they did not, which is why the choice is measured rather than assumed.
 - **Native-resolution forensic branch (28-D).** NPR-style residual stats, 8×8 block-DCT high/low energy ratios (aligned to the JPEG grid), FFT radial rings expressed as fractions of Nyquist (including the ≥0.75 bands that carry GAN/upsampling spectral peaks), plus color and Laplacian stats. Computed on a **native-scale 256 center crop** — never a bilinear downscale, which would low-pass-filter away exactly the high-frequency fingerprints this branch exists to measure.
 - **Test-time augmentation (TTA).** Inference averages the original view with a JPEG-70 view and a 0.5× down/up view; the averaged CLIP embedding is re-L2-normalized so its scale does not depend on the view count. Train, eval, and infer all go through the **same** `embed_for_score` path so cached features match scored features exactly.
 - **Sigmoid calibration.** After the head is fit, we sigmoid-calibrate it on a group-disjoint 30% slice of the validation set and report metrics only on the held-out 70% test slice, so `pred` is a usable P(AIGC) probability rather than a raw margin.
 
-**Training data:** SID-Set (`saberzl/SID_Set`) binary labels: `0` real vs `1` AIGC-positive (`1` full-synthetic **and** `2` tampered, upweighted 5×). One degraded view per official family — JPEG, blur, resize, **noise**, **jitter** — plus the clean view and clean/degraded consistency rows: 6 views per image. The noise and jitter views were added after the robustness table showed the families we scored but never trained on were the weakest rows; the 2×2 ablation below shows the forensic branch caused the noise collapse and the noise view is what makes the branch safe (see *What actually makes it robust*). The official WildFake demonstration subset is **never used for training** — it is only a reference benchmark (see below).
+**Training data:** SID-Set (`saberzl/SID_Set`) binary labels: `0` real vs `1` AIGC-positive (`1` full-synthetic **and** `2` tampered, upweighted 5×); **8000 real + 8000 AIGC training images in v2** (2000 per class in the deadline build). One degraded view per official family — JPEG, blur, resize, **noise**, **jitter** — plus the clean view: 6 rows per image, each row embedded through the same TTA path as inference. The noise and jitter views were added after the robustness table showed the families we scored but never trained on were the weakest rows; the 2×2 ablation below shows the forensic branch caused the noise collapse and the noise view is what makes the branch safe (see *What actually makes it robust*). The official WildFake demonstration subset is **never used for training** — it is only a reference benchmark (see below).
 
 ## Scope
 
 - **Transform grid.** The evaluation presets are the fifteen official Track-5 transforms: JPEG 90/70/50/30, Gaussian blur σ 0.5/1.0/2.0, resize 0.5×/0.25× then upsample, Gaussian noise σ 0.02/0.05/0.10, color jitter ±20%, center crop 80% (`src/augment.py`).
-- **Size.** Frozen CLIP ViT-B/32 (~88M) + a linear head; the competition cap was 2B.
+- **Size.** Frozen CLIP ViT-B/32 (~88M) + frozen DINOv2-small (~22M) + a linear head, about 110M in total; the competition cap was 2B.
 - **Interface.** `python infer.py --input_dir PATH --output preds.json` emits `[{"image_path", "pred"∈[0,1]}]`, one row per input file, robust to unreadable/truncated files.
 - **Data.** Trained on SID-Set only. The WildFake demonstration subset is a cross-source benchmark and is never used for training.
 
@@ -78,9 +87,9 @@ python -m pip install -r requirements.txt
 
 ```bat
 python scripts/make_samples.py                              :: tiny fixtures
-python scripts/download_data.py --train_per_class 2000 --val_per_class 1000
+python scripts/download_data.py --train_per_class 8000 --val_per_class 1000   :: v2 scale (v1 used 2000/class)
 :: feature cache: 6 views/train image (clean/jpeg/blur/resize/noise/jitter), variants pre/proj/dino/fuse.
-:: One process per shard; each holds CLIP + DINOv2 (~1.1 GB). Merge refuses a short cache.
+:: One process per shard; each holds CLIP + DINOv2 (~1.5 GB, single-core bound). Merge refuses a short cache.
 for /L %i in (0,1,4) do start /b python scripts/extract_features.py --split train --augment --shard %i/5 --out artifacts/_feat/train_%i.npz
 python scripts/extract_features.py --merge artifacts/_feat/train_0.npz artifacts/_feat/train_1.npz artifacts/_feat/train_2.npz artifacts/_feat/train_3.npz artifacts/_feat/train_4.npz --out artifacts/features_train.npz
 python scripts/extract_features.py --split val
@@ -114,26 +123,73 @@ Clean vs each Track-5 transform on the held-out validation **test** slice (calib
 <!-- ROBUSTNESS_TABLE -->
 | Transform | n | Accuracy | ROC AUC | 95% CI | TPR@1%FPR |
 |---|---:|---:|---:|---|---:|
-| `clean` | 1400 | 0.9007 | 0.9629 | [0.9534, 0.9714] | 0.5456 |
-| `jpeg_90` | 1400 | 0.9107 | 0.9658 | [0.9569, 0.9740] | 0.5559 |
-| `jpeg_70` | 1400 | 0.9186 | 0.9736 | [0.9658, 0.9806] | 0.6103 |
-| `jpeg_50` | 1400 | 0.9079 | 0.9667 | [0.9580, 0.9747] | 0.5250 |
-| `jpeg_30` | 1400 | 0.8843 | 0.9557 | [0.9459, 0.9655] | 0.4971 |
-| `blur_0.5` | 1400 | 0.8979 | 0.9638 | [0.9542, 0.9723] | 0.5235 |
-| `blur_1.0` | 1400 | 0.8593 | 0.9622 | [0.9526, 0.9708] | 0.5750 |
-| `blur_2.0` | 1400 | 0.8793 | 0.9536 | [0.9425, 0.9634] | 0.5279 |
-| `resize_0.5` | 1400 | 0.8657 | 0.9621 | [0.9523, 0.9708] | 0.5691 |
-| `resize_0.25` | 1400 | 0.8714 | 0.9472 | [0.9355, 0.9579] | 0.5074 |
-| `noise_0.02` | 1400 | 0.8929 | 0.9572 | [0.9465, 0.9667] | 0.4529 |
-| `noise_0.05` | 1400 | 0.8843 | 0.9563 | [0.9452, 0.9659] | 0.4103 |
-| `noise_0.10` | 1400 | 0.8957 | 0.9512 | [0.9397, 0.9615] | 0.3588 |
-| `jitter_0.20` | 1400 | 0.8657 | 0.9411 | [0.9292, 0.9522] | 0.3500 |
-| `crop_0.80` | 1400 | 0.8921 | 0.9578 | [0.9479, 0.9669] | 0.4838 |
+| `clean` | 1400 | 0.9286 | 0.9812 | [0.9749, 0.9868] | 0.7338 |
+| `jpeg_90` | 1400 | 0.9414 | 0.9832 | [0.9769, 0.9884] | 0.7235 |
+| `jpeg_70` | 1400 | 0.9450 | 0.9867 | [0.9814, 0.9912] | 0.7750 |
+| `jpeg_50` | 1400 | 0.9371 | 0.9825 | [0.9767, 0.9876] | 0.7074 |
+| `jpeg_30` | 1400 | 0.9121 | 0.9731 | [0.9656, 0.9802] | 0.5500 |
+| `blur_0.5` | 1400 | 0.9250 | 0.9814 | [0.9750, 0.9868] | 0.6882 |
+| `blur_1.0` | 1400 | 0.8636 | 0.9789 | [0.9719, 0.9850] | 0.7176 |
+| `blur_2.0` | 1400 | 0.9021 | 0.9727 | [0.9646, 0.9794] | 0.6706 |
+| `resize_0.5` | 1400 | 0.8879 | 0.9794 | [0.9723, 0.9853] | 0.7176 |
+| `resize_0.25` | 1400 | 0.8950 | 0.9675 | [0.9584, 0.9750] | 0.6044 |
+| `noise_0.02` | 1400 | 0.9257 | 0.9782 | [0.9709, 0.9848] | 0.6015 |
+| `noise_0.05` | 1400 | 0.9171 | 0.9756 | [0.9678, 0.9825] | 0.5000 |
+| `noise_0.10` | 1400 | 0.9193 | 0.9689 | [0.9600, 0.9768] | 0.5426 |
+| `jitter_0.20` | 1400 | 0.9036 | 0.9676 | [0.9593, 0.9752] | 0.5397 |
+| `crop_0.80` | 1400 | 0.9300 | 0.9792 | [0.9726, 0.9850] | 0.6941 |
 
-**Clean AUC 0.9629; mean AUC across the 14 transformed conditions 0.9582 (-0.0047 vs clean); worst condition `jitter_0.20` at 0.9411 (-0.0218 vs clean).** Every row is the same held-out test slice (1400 images, calibration images excluded) re-scored through the shipped inference path after the transform, so clean and transformed numbers are directly comparable.
+**Clean AUC 0.9812; mean AUC across the 14 transformed conditions 0.9768 (-0.0044 vs clean); worst condition `resize_0.25` at 0.9675 (-0.0137 vs clean).** Every row is the same held-out test slice (1400 images, calibration images excluded) re-scored through the shipped inference path after the transform, so clean and transformed numbers are directly comparable.
 
 ![Robustness: clean vs social-media transforms](results/robustness_chart.png)
 <!-- /ROBUSTNESS_TABLE -->
+
+### What changed after the deadline: v1 -> v2 on the same 1400 images
+
+The deadline build (v1, kept intact under `results/v1/` with its head and per-image scores)
+trained on 2000 images per class with five training views. v2 keeps the evaluation protocol --
+same held-out slice, same 15 transforms, same scoring path -- and changes four things:
+
+1. **Full data.** The 8000-per-class SID-Set subset: 16 000 training images, 96 000 feature rows.
+2. **Every scored family except crop is now a training view.** A colour-jitter view joins
+   JPEG / blur / resize / noise (six views per image); `jitter_0.20` was v1's worst row.
+3. **DINOv2-small fused with CLIP.** A 384-D DINOv2-small CLS embedding (22M parameters,
+   clean view only) is concatenated with the 512-D CLIP projection and the 28-D forensic vector.
+   The variant is chosen by 3-fold GroupKFold CV, not assumed: CLIP-only 0.9776, DINOv2-only
+   0.9244, fusion **0.9806** CV AUC. DINOv2 alone is clearly worse; as a second view of the
+   same image it still adds signal on top of CLIP.
+4. **Content-seeded evaluation noise.** The Gaussian-noise rows are seeded from the pixel
+   content, so the table is bit-reproducible across machines and re-runs.
+
+<!-- AB_V1V2 -->
+| Transform | v1 AUC (deadline build) | v2 AUC | delta AUC | CIs disjoint |
+|---|---:|---:|---:|---|
+| `clean` | 0.9629 | 0.9812 | +0.0183 | yes |
+| `jpeg_90` | 0.9658 | 0.9832 | +0.0174 | yes |
+| `jpeg_70` | 0.9736 | 0.9867 | +0.0131 | yes |
+| `jpeg_50` | 0.9667 | 0.9825 | +0.0158 | yes |
+| `jpeg_30` | 0.9557 | 0.9731 | +0.0174 | yes |
+| `blur_0.5` | 0.9638 | 0.9814 | +0.0176 | yes |
+| `blur_1.0` | 0.9622 | 0.9789 | +0.0167 | yes |
+| `blur_2.0` | 0.9536 | 0.9727 | +0.0191 | yes |
+| `resize_0.5` | 0.9621 | 0.9794 | +0.0173 | yes |
+| `resize_0.25` | 0.9472 | 0.9675 | +0.0203 | yes |
+| `noise_0.02` | 0.9572 | 0.9782 | +0.0210 | yes |
+| `noise_0.05` | 0.9563 | 0.9756 | +0.0193 | yes |
+| `noise_0.10` | 0.9512 | 0.9689 | +0.0177 | no |
+| `jitter_0.20` | 0.9411 | 0.9676 | +0.0265 | yes |
+| `crop_0.80` | 0.9578 | 0.9792 | +0.0214 | yes |
+
+Mean change +0.0186 AUC over 15 conditions (largest gain `jitter_0.20` +0.0265, smallest `jpeg_70` +0.0131); 14 condition(s) improved beyond overlapping bootstrap CIs, 0 regressed beyond them. Same 1400 held-out images, same transforms, same scoring path; only the training data and the feature variant differ.
+<!-- /AB_V1V2 -->
+
+**Multi-crop test-time augmentation** was implemented as an evaluation-time option (`--crops N`
+adds N corner/centre crops to the TTA view set) and measured separately rather than folded into
+the head (`results/ab_crops4.csv`):
+
+<!-- CROPS_TABLE -->
+_(being measured -- `python scripts/make_tables.py --crops 4` then `scripts/compare_ab.py`.)_
+<!-- /CROPS_TABLE -->
 
 ### Which task definition? The same scores, split by class
 
@@ -146,23 +202,23 @@ same run (`scripts/per_class_table.py`, `results/robustness_by_class.csv`):
 <!-- BY_CLASS -->
 | Transform | AUC: real vs **all AIGC** (headline) | AUC: real vs **fully synthetic** | AUC: real vs **tampered** | TPR@1%FPR all | TPR@1%FPR synthetic |
 |---|---:|---:|---:|---:|---:|
-| `clean` | 0.9629 | 0.9832 [0.9763, 0.9891] | 0.9434 | 0.5456 | 0.6637 |
-| `jpeg_90` | 0.9658 | 0.9855 [0.9791, 0.9907] | 0.9469 | 0.5559 | 0.6877 |
-| `jpeg_70` | 0.9736 | 0.9903 [0.9854, 0.9943] | 0.9577 | 0.6103 | 0.7538 |
-| `jpeg_50` | 0.9667 | 0.9894 [0.9842, 0.9939] | 0.9449 | 0.5250 | 0.7207 |
-| `jpeg_30` | 0.9557 | 0.9837 [0.9774, 0.9897] | 0.9288 | 0.4971 | 0.6577 |
-| `blur_0.5` | 0.9638 | 0.9838 [0.9768, 0.9895] | 0.9447 | 0.5235 | 0.6396 |
-| `blur_1.0` | 0.9622 | 0.9861 [0.9798, 0.9913] | 0.9394 | 0.5750 | 0.7357 |
-| `blur_2.0` | 0.9536 | 0.9872 [0.9816, 0.9919] | 0.9213 | 0.5279 | 0.7628 |
-| `resize_0.5` | 0.9621 | 0.9874 [0.9815, 0.9923] | 0.9378 | 0.5691 | 0.7568 |
-| `resize_0.25` | 0.9472 | 0.9856 [0.9795, 0.9908] | 0.9104 | 0.5074 | 0.7447 |
-| `noise_0.02` | 0.9572 | 0.9792 [0.9709, 0.9865] | 0.9361 | 0.4529 | 0.5676 |
-| `noise_0.05` | 0.9563 | 0.9790 [0.9713, 0.9863] | 0.9345 | 0.4103 | 0.5405 |
-| `noise_0.10` | 0.9512 | 0.9782 [0.9705, 0.9855] | 0.9254 | 0.3588 | 0.5075 |
-| `jitter_0.20` | 0.9411 | 0.9647 [0.9542, 0.9744] | 0.9185 | 0.3500 | 0.4054 |
-| `crop_0.80` | 0.9578 | 0.9781 [0.9708, 0.9850] | 0.9384 | 0.4838 | 0.6216 |
+| `clean` | 0.9812 | 0.9902 [0.9860, 0.9939] | 0.9727 | 0.7338 | 0.8198 |
+| `jpeg_90` | 0.9832 | 0.9917 [0.9879, 0.9951] | 0.9750 | 0.7235 | 0.8108 |
+| `jpeg_70` | 0.9867 | 0.9945 [0.9917, 0.9968] | 0.9792 | 0.7750 | 0.8679 |
+| `jpeg_50` | 0.9825 | 0.9937 [0.9906, 0.9964] | 0.9717 | 0.7074 | 0.8498 |
+| `jpeg_30` | 0.9731 | 0.9871 [0.9824, 0.9917] | 0.9598 | 0.5500 | 0.6877 |
+| `blur_0.5` | 0.9814 | 0.9900 [0.9857, 0.9938] | 0.9732 | 0.6882 | 0.7748 |
+| `blur_1.0` | 0.9789 | 0.9908 [0.9860, 0.9947] | 0.9676 | 0.7176 | 0.8438 |
+| `blur_2.0` | 0.9727 | 0.9917 [0.9869, 0.9956] | 0.9544 | 0.6706 | 0.8559 |
+| `resize_0.5` | 0.9794 | 0.9922 [0.9877, 0.9958] | 0.9671 | 0.7176 | 0.8589 |
+| `resize_0.25` | 0.9675 | 0.9911 [0.9864, 0.9951] | 0.9449 | 0.6044 | 0.8258 |
+| `noise_0.02` | 0.9782 | 0.9882 [0.9828, 0.9929] | 0.9687 | 0.6015 | 0.6697 |
+| `noise_0.05` | 0.9756 | 0.9872 [0.9819, 0.9921] | 0.9645 | 0.5000 | 0.5946 |
+| `noise_0.10` | 0.9689 | 0.9838 [0.9780, 0.9892] | 0.9546 | 0.5426 | 0.6727 |
+| `jitter_0.20` | 0.9676 | 0.9784 [0.9713, 0.9852] | 0.9571 | 0.5397 | 0.5886 |
+| `crop_0.80` | 0.9792 | 0.9883 [0.9833, 0.9927] | 0.9704 | 0.6941 | 0.7748 |
 
-n per row: 1400 (all), 1053 (real + fully synthetic), 1067 (real + tampered). Mean over transformed rows: fully synthetic 0.9827, tampered 0.9346.
+n per row: 1400 (all), 1053 (real + fully synthetic), 1067 (real + tampered). Mean over transformed rows: fully synthetic 0.9892, tampered 0.9649.
 <!-- /BY_CLASS -->
 
 Read the middle column when comparing against a number that was computed the usual way, and
@@ -176,8 +232,9 @@ behaviour. Our first account of it was wrong, and the ablation below is what cor
 Two axes, crossed: **features** (CLIP-only vs CLIP + native-resolution forensic) and
 **training views** (the four we started with, clean/jpeg/blur/resize, vs five with a noise
 view). The CLIP-only / 4-view corner is a **UnivFD-style linear probe** (Ojha et al., CVPR
-2023) -- a published method, not a strawman -- and the reference the shipped configuration
-has to beat. Every transformed image is embedded once and scored by all four heads from
+2023) -- a published method, not a strawman -- and the reference the deadline configuration
+(v1) had to beat. All four heads use v1's data scale (2000 images per class); the ablation
+is about mechanism, and the mechanism carried over unchanged into v2. Every transformed image is embedded once and scored by all four heads from
 column slices of the same vector, so the whole grid costs one sweep
 (`scripts/ablation.py`, `results/ablation_table.csv`).
 
@@ -187,13 +244,13 @@ Mean AUC over the 14 transformed conditions (held-out SID-Set test slice, n = 14
 | | 4 views (jpeg/blur/resize) | 5 views (+ noise) |
 |---|---:|---:|
 | **CLIP-only** | 0.9445 *(UnivFD-style baseline)* | 0.9480 |
-| **CLIP + forensic** | **0.9389** (down) | **0.9583** *(shipped)* |
+| **CLIP + forensic** | **0.9389** (down) | **0.9583** *(v1, the deadline build)* |
 
-Worst single transform: baseline 0.9237 (`jitter_0.20`), forensic alone **0.8096** (`noise_0.10`), shipped 0.9411 (`jitter_0.20`). Clean AUC: baseline 0.9501, shipped 0.9630.
+Worst single transform: baseline 0.9237 (`jitter_0.20`), forensic alone **0.8096** (`noise_0.10`), v1 0.9411 (`jitter_0.20`). Clean AUC: baseline 0.9501, v1 0.9630. (All four heads here are 2000-image, CLIP-only-or-CLIP+forensic configurations; the v2 head is compared against v1 in *What changed after the deadline*.)
 
 Cross-source (WildFake demo subset, a generator family absent from training, n = 2000 per cell):
 
-| transform | UnivFD-style | + noise view | + forensic | shipped |
+| transform | UnivFD-style | + noise view | + forensic | v1 (both) |
 |---|---:|---:|---:|---:|
 | `clean` | 0.8094 | 0.7799 | 0.9189 | **0.9334** |
 | `jpeg_30` | 0.7957 | 0.7895 | 0.9134 | **0.9327** |
@@ -227,30 +284,33 @@ Cross-source (WildFake demo subset, a generator family absent from training, n =
 5. `jitter_0.20` is the weakest row for the baseline and for us alike; it moves the CLIP
    embedding itself and the colour-agnostic forensic branch cannot help.
 
-For the record, the shipped head against the head we had before the noise view, every
+For the record, the current head against the head we had before the noise view, every
 transform, same 1400-image slice (`results/baseline/robustness_table.csv` vs
-`results/robustness_table.csv`, `scripts/compare_ab.py`):
+`results/robustness_table.csv`, `scripts/compare_ab.py`). This table now folds in everything
+that changed since that snapshot -- the noise view, then v2's data, jitter view and DINOv2
+fusion; the isolated effect of the noise view is the 4-vs-5-view column above, and the
+isolated effect of v2 is the v1 -> v2 table:
 
 <!-- AB_TABLE -->
 | Transform | baseline AUC | shipped AUC | delta AUC | CIs disjoint |
 |---|---:|---:|---:|---|
-| `clean` | 0.9634 | 0.9629 | -0.0005 | no |
-| `jpeg_90` | 0.9674 | 0.9658 | -0.0016 | no |
-| `jpeg_70` | 0.9728 | 0.9736 | +0.0008 | no |
-| `jpeg_50` | 0.9682 | 0.9667 | -0.0015 | no |
-| `jpeg_30` | 0.9547 | 0.9557 | +0.0010 | no |
-| `blur_0.5` | 0.9618 | 0.9638 | +0.0020 | no |
-| `blur_1.0` | 0.9567 | 0.9622 | +0.0055 | no |
-| `blur_2.0` | 0.9500 | 0.9536 | +0.0036 | no |
-| `resize_0.5` | 0.9567 | 0.9621 | +0.0054 | no |
-| `resize_0.25` | 0.9455 | 0.9472 | +0.0017 | no |
-| `noise_0.02` | 0.9244 | 0.9572 | +0.0328 | yes |
-| `noise_0.05` | 0.8851 | 0.9563 | +0.0712 | yes |
-| `noise_0.10` | 0.8117 | 0.9512 | +0.1395 | yes |
-| `jitter_0.20` | 0.9362 | 0.9411 | +0.0049 | no |
-| `crop_0.80` | 0.9521 | 0.9578 | +0.0057 | no |
+| `clean` | 0.9634 | 0.9812 | +0.0178 | yes |
+| `jpeg_90` | 0.9674 | 0.9832 | +0.0158 | yes |
+| `jpeg_70` | 0.9728 | 0.9867 | +0.0139 | yes |
+| `jpeg_50` | 0.9682 | 0.9825 | +0.0143 | yes |
+| `jpeg_30` | 0.9547 | 0.9731 | +0.0184 | yes |
+| `blur_0.5` | 0.9618 | 0.9814 | +0.0196 | yes |
+| `blur_1.0` | 0.9567 | 0.9789 | +0.0222 | yes |
+| `blur_2.0` | 0.9500 | 0.9727 | +0.0227 | yes |
+| `resize_0.5` | 0.9567 | 0.9794 | +0.0227 | yes |
+| `resize_0.25` | 0.9455 | 0.9675 | +0.0220 | yes |
+| `noise_0.02` | 0.9244 | 0.9782 | +0.0538 | yes |
+| `noise_0.05` | 0.8851 | 0.9756 | +0.0905 | yes |
+| `noise_0.10` | 0.8117 | 0.9689 | +0.1572 | yes |
+| `jitter_0.20` | 0.9362 | 0.9676 | +0.0314 | yes |
+| `crop_0.80` | 0.9521 | 0.9792 | +0.0271 | yes |
 
-3 transform(s) improved beyond overlapping bootstrap CIs; 0 regressed beyond them.
+15 transform(s) improved beyond overlapping bootstrap CIs; 0 regressed beyond them.
 <!-- /AB_TABLE -->
 
 ### Is it reading compression history? A leakage control
@@ -279,24 +339,24 @@ On the held-out test slice (1400 images; both classes are stored as JPEG Q95 by 
 | CLIP-only, 4 views (UnivFD-style) | 0.9501 | 0.9507 | 0.9510 | +0.0006 |
 | CLIP-only, 5 views | 0.9511 | 0.9516 | 0.9520 | +0.0005 |
 | CLIP + forensic, 4 views | 0.9635 | 0.9640 | 0.9644 | +0.0005 |
-| CLIP + forensic, 5 views (shipped) | 0.9630 | 0.9635 | 0.9637 | +0.0005 |
+| CLIP + forensic, 5 views (v1, deadline build) | 0.9630 | 0.9635 | 0.9637 | +0.0005 |
 <!-- /LEAKAGE -->
 
 ## WildFake demonstration benchmark (never used in training)
 
 The official demonstration subset (`techjam-aigc/wildfake-eval-subset`, `default` config = COCO val2017 reals + DALL·E-3 Advanced fakes) scored through the **shipped** inference path on a balanced subsample. This measures cross-source generalization to a generator family absent from SID-Set training. Full table: `results/demo_benchmark.csv`.
 
-> **Not a matched A/B on its own.** The shipped head was scored on a balanced 1000-image subsample here; the pre-change snapshot in `results/baseline/demo_benchmark.csv` used 2000. The matched cross-source comparison — both heads, same 2000 images — is the cross-source table in *What actually makes it robust* above (`results/ablation_demo_table.csv`); this section is the shipped head's reference benchmark only.
+> **v1 -> v2, matched.** The subsample is seeded, so these 2000 images are the same ones the cross-source ablation table scored (`results/ablation_demo_table.csv`, row `forensic_5v` = the v1 head): clean 0.9334 -> **0.9657**, `noise_0.05` 0.9290 -> **0.9694**, `jpeg_30` 0.9327 -> 0.9250 and `resize_0.25` 0.7536 -> 0.7599 (both within overlapping CIs). The in-distribution gains transfer to the unseen generator on clean and noisy images; heavy JPEG and 0.25x thumbnails of an unseen generator remain the open problem, and thumbnails are still where the model is weakest by a wide margin. (The v1 snapshot in `results/v1/demo_benchmark.csv` was scored on a 1000-image subsample and is not directly comparable.)
 
 <!-- DEMO_TABLE -->
 | Transform | n | Accuracy | ROC AUC | 95% CI |
 |---|---:|---:|---:|---|
-| `clean` | 1000 | 0.8630 | 0.9372 | [0.9212, 0.9518] |
-| `jpeg_30` | 1000 | 0.8100 | 0.9292 | [0.9139, 0.9440] |
-| `resize_0.25` | 1000 | 0.6820 | 0.7700 | [0.7390, 0.7994] |
-| `noise_0.05` | 1000 | 0.8550 | 0.9294 | [0.9132, 0.9448] |
+| `clean` | 2000 | 0.8835 | 0.9657 | [0.9586, 0.9722] |
+| `jpeg_30` | 2000 | 0.7870 | 0.9250 | [0.9134, 0.9356] |
+| `resize_0.25` | 2000 | 0.6660 | 0.7599 | [0.7384, 0.7811] |
+| `noise_0.05` | 2000 | 0.8855 | 0.9694 | [0.9623, 0.9756] |
 
-**Cross-source clean AUC 0.9372 on 1000 balanced images from a generator family (DALL-E-3) absent from SID-Set training** -- an out-of-distribution check, not a tuning target.
+**Cross-source clean AUC 0.9657 on 2000 balanced images from a generator family (DALL-E-3) absent from SID-Set training** -- an out-of-distribution check, not a tuning target.
 <!-- /DEMO_TABLE -->
 
 ## Error analysis note
@@ -306,10 +366,10 @@ Representative false positives (authentic images flagged AIGC — creator harm),
 <!-- ERROR_ANALYSIS -->
 On the held-out test slice (1400 images: 720 real, 680 AIGC) at the shipped 0.5 threshold:
 
-- **False positives** (authentic flagged AIGC -- direct creator harm): 93/720 = **12.92% FPR**.
-- **False negatives** (generated images missed): 46/680 = **6.76% FNR**.
-- **FPR@95%TPR**: 19.03% clean, 22.50% after JPEG-30 -- the price in flagged authentic images if the product insisted on catching 95% of AIGC.
-- **JPEG-30 score drift**: real +0.0074, AIGC -0.0019 mean change in P(AIGC); 42 real images flip into false positives and 17 AIGC images flip into false negatives. AUC 0.9629 clean vs 0.9557 after JPEG-30.
+- **False positives** (authentic flagged AIGC -- direct creator harm): 71/720 = **9.86% FPR**.
+- **False negatives** (generated images missed): 29/680 = **4.26% FNR**.
+- **FPR@95%TPR**: 8.19% clean, 12.22% after JPEG-30 -- the price in flagged authentic images if the product insisted on catching 95% of AIGC.
+- **JPEG-30 score drift**: real +0.0234, AIGC -0.0061 mean change in P(AIGC); 39 real images flip into false positives and 14 AIGC images flip into false negatives. AUC 0.9812 clean vs 0.9731 after JPEG-30.
 
 The `k` highest-scoring FPs and lowest-scoring FNs, with their per-image clean and JPEG-30 scores, are in `results/error_analysis.json`.
 <!-- /ERROR_ANALYSIS -->
@@ -321,36 +381,37 @@ The `k` highest-scoring FPs and lowest-scoring FNs, with their per-image clean a
 | Choice | Why |
 |---|---|
 | Frozen CLIP + linear head | Strong cross-generator baseline (UnivFD-style); no 2B-class model; trains in seconds |
-| Pre- vs projected CLIP, chosen by CV | Pre-projection usually wins for fake detection; we verify rather than assume |
+| CLIP pre / proj / DINOv2 / fusion, chosen by CV | The literature favours pre-projection CLIP; our data picked `proj` (v1) and CLIP + DINOv2 fusion (v2), so the choice is measured, not assumed |
+| DINOv2-small as a second frozen view (v2) | A different pre-training objective from CLIP. Alone it is weaker (CV AUC 0.924 vs 0.978); fused it adds signal (0.981) for +22M parameters |
 | Native-resolution forensic branch | CLIP loses high-frequency traces; a 128×128 downscale aliases them away |
 | Train-time official augmentations | Aligns the classifier with redistribution, not just clean SID-Set |
-| Every scored transform family is also a training view | The families we scored but never trained on were measurably our weakest rows; adding the noise view lifted `noise_0.10` AUC by +0.166 |
+| Every scored family except crop is also a training view | The families we scored but never trained on were measurably our weakest rows; adding the noise view lifted `noise_0.10` AUC by +0.166, and v2 adds the jitter view |
 | TTA (clean + JPEG-70 + 0.5×) | Recovers part of the transform-induced drop the table is scored on |
 | Sigmoid calibration on held-out val | `pred` is a usable probability, evaluated without calibration leakage |
 
 ## Limitations & what we would improve with more time
 
 - **Generator diversity.** Trained on SID-Set only. Unknown commercial generators (Flux, Midjourney v7, SD3) still shift CLIP geometry. The listed resources (CIFAKE, WildFake-train) are allowed for training and would be the first addition — mixing generator families is the highest-leverage next step.
-- **Remaining untrained families.** `jitter` and `crop` are still scored but not training views. Their feature caches are already extracted (`scripts/extract_extra_view.py --family jitter|crop`); we ran out of clock to evaluate that candidate, so we shipped the one variant we could verify end-to-end rather than an unmeasured one.
+- **Remaining untrained family.** `crop` is the one scored family that is still not a training view (v2 added `jitter`). Crop was addressed at evaluation time instead -- multi-crop TTA, `make_tables.py --crops N`, reported separately in `results/ab_crops4.csv` -- so the crop row stays an honest out-of-training check.
 - **Hardest rows.** Extreme 0.25× thumbnails remain the weakest transform; a small learned frequency head or a second forensic scale could help.
 - **Local edits / face swaps** are only partially covered (tampered class upweight); a dedicated localization branch is out of scope here.
-- **Batched inference.** `embed_for_score` scores one image per CLIP forward, so the only way to use all cores is to shard across processes -- and each process holds its own ~1.4 GB copy of CLIP. On a 16 GB box that caps us at ~5 workers (10 died with `MemoryError`). Batching N images per forward would need one model copy and beat all five shards; we kept the one-image path because it is the single code path shared by train/eval/infer, which is what guarantees cached features and live scores are byte-identical.
-- **Scale.** We trained on a 2000/class subset for the deadline; `configs/default.yaml` targets 8000/class on a CUDA box (see below).
+- **Batched inference.** `embed_for_score` scores one image per forward, so the only way to use all cores is to shard across processes -- and each process holds its own ~1.5 GB copy of CLIP + DINOv2 and is single-core bound (about 10 s per training image for six views: three TTA CLIP forwards each, DINOv2, and the forensic branch at native resolution). On a 16 GB box that caps us at 4-5 workers; more just pages. Batching N images per forward would need one model copy and beat all the shards; we kept the one-image path because it is the single code path shared by train/eval/infer, which is what guarantees cached features and live scores are byte-identical.
+- **Scale.** v1 trained on 2000/class for the deadline; v2 uses the full 8000/class subset on the same CPU box (sharded, checkpointed extraction). The next lever is generator diversity, not more SID-Set images.
 - **False positives on heavily filtered real photos** hurt creators; a per-creator threshold or an abstain band would reduce that harm.
 
-## Full-scale reproduction on a CUDA machine
+## Reproduction on a CUDA machine
 
-The pipeline is CPU/GPU agnostic (`get_device()` auto-selects CUDA). On a GPU box:
+Everything above was produced on a CPU-only laptop; the pipeline is CPU/GPU agnostic (`get_device()` auto-selects CUDA), and on a GPU box the same commands run in minutes instead of hours:
 
 ```bat
 python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 python scripts/download_data.py --train_per_class 8000 --val_per_class 1000
 python scripts/extract_features.py --split train --augment
 python scripts/extract_features.py --split val
-python scripts/train.py
+python scripts/train.py --variants proj,dino,fuse
 ```
 
-ViT-B/32 CPU extraction runs ≈20–60 img/s; a modest GPU (e.g. GTX 1650, fp16) cuts extraction from hours to minutes. For a stronger encoder, swap `clip_model_id` to `openai/clip-vit-large-patch14` in `configs/default.yaml` (~15–40 img/s fp16 on a GTX 1650, still well under 2B); the pre-projection variant becomes 1024-D and everything else is unchanged.
+A modest GPU (e.g. GTX 1650, fp16) cuts the six-view extraction from hours to minutes. For a stronger encoder, swap `clip_model_id` to `openai/clip-vit-large-patch14` in `configs/default.yaml` (~15–40 img/s fp16 on a GTX 1650, still well under 2B); the pre-projection variant becomes 1024-D and everything else is unchanged.
 
 ## Authorship
 
@@ -373,7 +434,7 @@ scripts/                 data download, feature cache, train, tables, ablation, 
 results/                 every table in the README, per-image scores, baseline snapshot
 artifacts/               shipped head (repostguard.joblib) + WEIGHTS.txt
 docs/                    findings write-up, competitor review, submission sheet, video script
-tests/                   35 tests; dataset-dependent ones skip on a clean checkout
+tests/                   52 tests; dataset-dependent ones skip on a clean checkout
 ```
 
 ## License

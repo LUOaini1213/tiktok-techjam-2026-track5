@@ -105,6 +105,67 @@ def ab_section(results: Path) -> str:
     return f"{head}\n{body}{note}"
 
 
+def ab_v1v2_section(results: Path) -> str:
+    """v1 (deadline build, results/v1/) vs the current head, same 1400 test images."""
+    rows = _rows(results / "ab_v1_v2.csv")
+    if not rows:
+        return MISSING
+    head = (
+        "| Transform | v1 AUC (deadline build) | v2 AUC | delta AUC | CIs disjoint |\n"
+        "|---|---:|---:|---:|---|"
+    )
+    body = "\n".join(
+        f"| `{r['transform']}` | {r['auc_baseline']} | {r['auc_candidate']} | "
+        f"{r['delta_auc']} | {r['ci_disjoint']} |"
+        for r in rows
+    )
+    deltas = [float(r["delta_auc"]) for r in rows]
+    gains = [r for r in rows if r["ci_disjoint"] == "yes" and float(r["delta_auc"]) > 0]
+    losses = [r for r in rows if r["ci_disjoint"] == "yes" and float(r["delta_auc"]) < 0]
+    worst = min(rows, key=lambda r: float(r["delta_auc"]))
+    best = max(rows, key=lambda r: float(r["delta_auc"]))
+    note = (
+        f"\n\nMean change {sum(deltas) / len(deltas):+.4f} AUC over {len(rows)} conditions "
+        f"(largest gain `{best['transform']}` {float(best['delta_auc']):+.4f}, smallest "
+        f"`{worst['transform']}` {float(worst['delta_auc']):+.4f}); {len(gains)} condition(s) improved "
+        f"beyond overlapping bootstrap CIs, {len(losses)} regressed beyond them. Same 1400 held-out "
+        "images, same transforms, same scoring path; only the training data and the feature variant differ."
+    )
+    return f"{head}\n{body}{note}"
+
+
+
+def crops_section(results: Path) -> str:
+    """Eval-time multi-crop TTA (--crops 4) vs the plain TTA table, same head, same images."""
+    rows = _rows(results / "ab_crops4.csv")
+    if not rows:
+        return "_(being measured -- `python scripts/make_tables.py --crops 4` then `scripts/compare_ab.py`.)_"
+    head = (
+        "| Transform | AUC, TTA (shipped) | AUC, TTA + 4 crops | delta AUC | CIs disjoint |\n"
+        "|---|---:|---:|---:|---|"
+    )
+    body = "\n".join(
+        f"| `{r['transform']}` | {r['auc_baseline']} | {r['auc_candidate']} | "
+        f"{r['delta_auc']} | {r['ci_disjoint']} |"
+        for r in rows
+    )
+    deltas = [float(r["delta_auc"]) for r in rows]
+    mean = sum(deltas) / len(deltas)
+    gains = sum(1 for r in rows if r["ci_disjoint"] == "yes" and float(r["delta_auc"]) > 0)
+    losses = sum(1 for r in rows if r["ci_disjoint"] == "yes" and float(r["delta_auc"]) < 0)
+    if mean > 0.002:
+        verdict = "a small but consistent gain"
+    elif mean < -0.002:
+        verdict = "a net loss"
+    else:
+        verdict = "no measurable effect"
+    note = (
+        f"\n\nMean change {mean:+.4f} AUC over {len(rows)} conditions ({gains} improved and {losses} regressed "
+        f"beyond overlapping CIs): {verdict}, for 7 CLIP forwards per image instead of 3. The shipped head "
+        "and `infer.py` keep the plain 3-view TTA; `--crops N` stays an evaluation option."
+    )
+    return f"{head}\n{body}{note}"
+
 
 def error_section(results: Path) -> str:
     path = results / "error_analysis.json"
@@ -168,12 +229,14 @@ def ablation_section(results: Path) -> str:
         "| | 4 views (jpeg/blur/resize) | 5 views (+ noise) |",
         "|---|---:|---:|",
         f"| **CLIP-only** | {m['mean']['clip_only_4v']:.4f} *(UnivFD-style baseline)* | {m['mean']['clip_only_5v']:.4f} |",
-        f"| **CLIP + forensic** | **{m['mean']['forensic_4v']:.4f}** (down) | **{m['mean']['forensic_5v']:.4f}** *(shipped)* |",
+        f"| **CLIP + forensic** | **{m['mean']['forensic_4v']:.4f}** (down) | **{m['mean']['forensic_5v']:.4f}** *(v1, the deadline build)* |",
         "",
         f"Worst single transform: baseline {m['worst']['clip_only_4v'][1]:.4f} (`{m['worst']['clip_only_4v'][0]}`), "
         f"forensic alone **{m['worst']['forensic_4v'][1]:.4f}** (`{m['worst']['forensic_4v'][0]}`), "
-        f"shipped {m['worst']['forensic_5v'][1]:.4f} (`{m['worst']['forensic_5v'][0]}`). "
-        f"Clean AUC: baseline {clean.get('clip_only_4v', nan):.4f}, shipped {clean.get('forensic_5v', nan):.4f}.",
+        f"v1 {m['worst']['forensic_5v'][1]:.4f} (`{m['worst']['forensic_5v'][0]}`). "
+        f"Clean AUC: baseline {clean.get('clip_only_4v', nan):.4f}, v1 {clean.get('forensic_5v', nan):.4f}. "
+        "(All four heads here are 2000-image, CLIP-only-or-CLIP+forensic configurations; the v2 head is compared "
+        "against v1 in *What changed after the deadline*.)",
     ]
     demo = _rows(results / "ablation_demo_table.csv")
     if demo:
@@ -184,7 +247,7 @@ def ablation_section(results: Path) -> str:
             "",
             "Cross-source (WildFake demo subset, a generator family absent from training, n = 2000 per cell):",
             "",
-            "| transform | UnivFD-style | + noise view | + forensic | shipped |",
+            "| transform | UnivFD-style | + noise view | + forensic | v1 (both) |",
             "|---|---:|---:|---:|---:|",
         ]
         for t in ["clean", "jpeg_30", "resize_0.25", "noise_0.05"]:
@@ -210,7 +273,7 @@ def leakage_section(results: Path) -> str:
         "clip_only_4v": "CLIP-only, 4 views (UnivFD-style)",
         "clip_only_5v": "CLIP-only, 5 views",
         "forensic_4v": "CLIP + forensic, 4 views",
-        "forensic_5v": "CLIP + forensic, 5 views (shipped)",
+        "forensic_5v": "CLIP + forensic, 5 views (v1, deadline build)",
     }
     out = [
         f"On the held-out test slice ({d['n']} images; both classes are stored as JPEG Q95 by our own download pipeline):",
@@ -292,6 +355,10 @@ def main() -> None:
         ("ERROR_ANALYSIS", error_section(results)),
     ):
         text = replace_section(text, name, body)
+    # Sections that only exist in newer README revisions: rendered when their markers are present.
+    for name, body in (("AB_V1V2", ab_v1v2_section(results)), ("CROPS_TABLE", crops_section(results))):
+        if f"<!-- {name} -->" in text:
+            text = replace_section(text, name, body)
     readme.write_text(text, encoding="utf-8")
     print(f"Updated {readme}")
 

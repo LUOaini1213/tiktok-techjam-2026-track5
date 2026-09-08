@@ -136,8 +136,11 @@ def stage_train() -> None:
 
 
 def table_stage(crops: int, out_csv: str, parts_dir: str, tag: str) -> None:
-    if (ROOT / out_csv).exists():
-        mark(f"{tag}: {out_csv} exists, skipping"); return
+    # Skip only on this run's own completion marker: the repo ships a v1 results table under the
+    # same path, so "the csv exists" says nothing about whether the current head was evaluated.
+    ok_marker = f"{tag}_CSV_OK"
+    if LOG.exists() and ok_marker in LOG.read_text(encoding="utf-8", errors="replace"):
+        mark(f"{tag}: {out_csv} already built by this run, skipping"); return
     pd = ROOT / parts_dir; pd.mkdir(exist_ok=True)
     for p in pd.glob("*.csv"):
         p.unlink()
@@ -147,6 +150,7 @@ def table_stage(crops: int, out_csv: str, parts_dir: str, tag: str) -> None:
     run_pool(jobs, THREADS_PER_WORKER, tag=tag)
     run_one(["scripts/make_tables.py", "--merge", *[f"{parts_dir}/part_{i}.csv" for i in range(5)], "--out", out_csv],
             ROOT / f"logs/{tag}_merge.log", name=f"{tag}_MERGE")
+    mark(ok_marker)
 
 
 def stage_eval() -> None:

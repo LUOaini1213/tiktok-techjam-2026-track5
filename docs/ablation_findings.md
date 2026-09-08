@@ -1,5 +1,9 @@
 # Ablation findings — what actually makes RepostGuard robust
 
+> **Status (2026-09-08).** These experiments were run on the v1 deadline build (CLIP only,
+> 2000 images per class, 4 vs 5 training views). The mechanism they establish is unchanged; the
+> shipped head is now v2 (8000 per class, six views, CLIP + DINOv2-small fusion), compared
+> against v1 on the same held-out images in README, *What changed after the deadline*.
 *Analysis branch, produced after the submission deadline. Nothing here changes the shipped
 model or any submitted number; it explains them.*
 

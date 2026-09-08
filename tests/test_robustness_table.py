@@ -28,8 +28,11 @@ class RobustnessTableTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             dest = Path(td) / "robustness_table.csv"
             # Keep bootstrap tiny so the test stays fast; the CI columns still get written.
+            # scores_dir must be scoped to the temp dir: the default is results/scores, and a
+            # 2-image smoke run would overwrite the real per-image score files there.
             out = evaluate_robustness(
-                max_images=2, use_tta=False, table_path=dest, bootstrap_reps=50
+                max_images=2, use_tta=False, table_path=dest, bootstrap_reps=50,
+                scores_dir=Path(td) / "scores",
             )
             self.assertTrue(out.exists())
             with out.open(newline="", encoding="utf-8") as f:

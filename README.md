@@ -194,10 +194,32 @@ set that is averaged before scoring, so at `--crops 4` the CLIP mean is over 7 v
 image and is unaffected. The head, however, was fit on 3-view CLIP / 1-view DINOv2 embeddings,
 so changing the view count at score time moves the input distribution away from the one the
 linear head was calibrated on. That is the honest reason to report this as its own A/B rather
-than quietly switching it on (`results/ab_crops4.csv`):
+than quietly switching it on (`results/ab_crops4.csv`). The pattern in the table is the tell:
+the two JPEG rows are the only real gains (`jpeg_70` +0.0030, `jpeg_30` +0.0025), while noise,
+0.25x thumbnails and crop lose the most (-0.009 to -0.012). Crops keep block artefacts intact
+but average away exactly the sparse high-frequency evidence the forensic branch and the
+noise-trained head depend on. No single row moves beyond overlapping CIs; the mean does:
 
 <!-- CROPS_TABLE -->
-_(being measured -- `python scripts/make_tables.py --crops 4` then `scripts/compare_ab.py`.)_
+| Transform | AUC, TTA (shipped) | AUC, TTA + 4 crops | delta AUC | CIs disjoint |
+|---|---:|---:|---:|---|
+| `clean` | 0.9812 | 0.9797 | -0.0015 | no |
+| `jpeg_90` | 0.9832 | 0.9831 | -0.0001 | no |
+| `jpeg_70` | 0.9867 | 0.9897 | +0.0030 | no |
+| `jpeg_50` | 0.9825 | 0.9792 | -0.0033 | no |
+| `jpeg_30` | 0.9731 | 0.9756 | +0.0025 | no |
+| `blur_0.5` | 0.9814 | 0.9805 | -0.0009 | no |
+| `blur_1.0` | 0.9789 | 0.9791 | +0.0002 | no |
+| `blur_2.0` | 0.9727 | 0.9728 | +0.0001 | no |
+| `resize_0.5` | 0.9794 | 0.9790 | -0.0004 | no |
+| `resize_0.25` | 0.9675 | 0.9561 | -0.0114 | no |
+| `noise_0.02` | 0.9782 | 0.9659 | -0.0123 | no |
+| `noise_0.05` | 0.9756 | 0.9660 | -0.0096 | no |
+| `noise_0.10` | 0.9689 | 0.9567 | -0.0122 | no |
+| `jitter_0.20` | 0.9676 | 0.9637 | -0.0039 | no |
+| `crop_0.80` | 0.9792 | 0.9701 | -0.0091 | no |
+
+Mean change -0.0039 AUC over 15 conditions (0 improved and 0 regressed beyond overlapping CIs): a net loss, for 7 CLIP forwards per image instead of 3. The shipped head and `infer.py` keep the plain 3-view TTA; `--crops N` stays an evaluation option.
 <!-- /CROPS_TABLE -->
 
 ### Which task definition? The same scores, split by class
@@ -401,7 +423,7 @@ The `k` highest-scoring FPs and lowest-scoring FNs, with their per-image clean a
 ## Limitations & what we would improve with more time
 
 - **Generator diversity.** Trained on SID-Set only. Unknown commercial generators (Flux, Midjourney v7, SD3) still shift CLIP geometry. The listed resources (CIFAKE, WildFake-train) are allowed for training and would be the first addition — mixing generator families is the highest-leverage next step.
-- **Remaining untrained family.** `crop` is the one scored family that is still not a training view (v2 added `jitter`). Crop was addressed at evaluation time instead -- multi-crop TTA, `make_tables.py --crops N`, reported separately in `results/ab_crops4.csv` -- so the crop row stays an honest out-of-training check.
+- **Remaining untrained family.** `crop` is the one scored family that is still not a training view (v2 added `jitter`). We tried to cover it at evaluation time instead, with multi-crop TTA (`make_tables.py --crops N`), and measured it rather than assuming it helped: it does not (mean -0.0041 AUC, `results/ab_crops4.csv`). A crop **training** view, or re-fitting the head on the 7-view embedding it would then be scored on, is the version of this idea still worth trying.
 - **Hardest rows.** Extreme 0.25× thumbnails remain the weakest transform; a small learned frequency head or a second forensic scale could help.
 - **Local edits / face swaps** are only partially covered (tampered class upweight); a dedicated localization branch is out of scope here.
 - **Batched inference.** `embed_for_score` scores one image per forward, so the only way to use all cores is to shard across processes -- and each process holds its own ~1.5 GB copy of CLIP + DINOv2 and is single-core bound (about 10 s per training image for six views: three TTA CLIP forwards each, DINOv2, and the forensic branch at native resolution). On a 16 GB box that caps us at 4-5 workers; more just pages. Batching N images per forward would need one model copy and beat all the shards; we kept the one-image path because it is the single code path shared by train/eval/infer, which is what guarantees cached features and live scores are byte-identical.

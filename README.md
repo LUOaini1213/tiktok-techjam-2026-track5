@@ -51,10 +51,14 @@ python -m pip install -r requirements.txt
 python infer.py --input_dir samples --output preds.json     :: directory in, JSON out
 ```
 
-Weights ship in the repo (`artifacts/repostguard.joblib`, 28 KB on top of the public CLIP and
-DINOv2-small checkpoints). `python app.py` opens a Gradio demo with JPEG / blur / noise / crop sliders;
-the [3-minute video](https://youtu.be/wbeGLieLZ9c) is generated from the committed results
-by `scripts/make_video.py`.
+Our weights ship in the repo (`artifacts/repostguard.joblib`, 28 KB); the two frozen encoders it
+sits on top of are public checkpoints, so the **first** run downloads CLIP ViT-B/32 and
+DINOv2-small (~440 MB together) from the Hugging Face hub and caches them. After that a run of
+the two sample images takes about 30 s on a CPU laptop. `python app.py` opens a Gradio demo with
+JPEG / blur / noise / crop sliders. The [3-minute video](https://youtu.be/wbeGLieLZ9c) is
+rendered from the committed result CSVs by `scripts/make_video.py`; the uploaded cut is the
+submitted one and therefore quotes the **v1** numbers, so re-running the script against the
+current CSVs produces the v2 figures instead.
 
 ## Project overview
 
@@ -183,9 +187,14 @@ same held-out slice, same 15 transforms, same scoring path -- and changes four t
 Mean change +0.0186 AUC over 15 conditions (largest gain `jitter_0.20` +0.0265, smallest `jpeg_70` +0.0131); 14 condition(s) improved beyond overlapping bootstrap CIs, 0 regressed beyond them. Same 1400 held-out images, same transforms, same scoring path; only the training data and the feature variant differ.
 <!-- /AB_V1V2 -->
 
-**Multi-crop test-time augmentation** was implemented as an evaluation-time option (`--crops N`
-adds N corner/centre crops to the TTA view set) and measured separately rather than folded into
-the head (`results/ab_crops4.csv`):
+**Multi-crop test-time augmentation** was implemented as an evaluation-time option and measured
+separately rather than folded into the head. `--crops N` adds N corner/centre crops to the view
+set that is averaged before scoring, so at `--crops 4` the CLIP mean is over 7 views instead of
+3 and the DINOv2 mean over 5 instead of 1; the forensic vector is computed once on the full
+image and is unaffected. The head, however, was fit on 3-view CLIP / 1-view DINOv2 embeddings,
+so changing the view count at score time moves the input distribution away from the one the
+linear head was calibrated on. That is the honest reason to report this as its own A/B rather
+than quietly switching it on (`results/ab_crops4.csv`):
 
 <!-- CROPS_TABLE -->
 _(being measured -- `python scripts/make_tables.py --crops 4` then `scripts/compare_ab.py`.)_

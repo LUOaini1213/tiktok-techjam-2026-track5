@@ -28,7 +28,8 @@ sys.path.insert(0, str(ROOT))
 
 from src.config import load_config, model_path
 from src.io_utils import enable_utf8_stdout
-from src.features import FEATURE_VARIANTS, feature_dim_for_variant
+from src.augment import PAIR_FAMILIES
+from src.features import BASE_DIMS, DINO_MODEL_ID, FEATURE_VARIANTS, feature_dim_for_variant
 from src.model import save_bundle
 from src.train_signal import fit_with_training_signal, positive_proba
 
@@ -51,6 +52,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help="Write the bundle here instead of artifacts/repostguard.joblib (A/B runs)",
+    )
+    p.add_argument(
+        "--variants",
+        type=str,
+        default=None,
+        help="Comma-separated subset of feature variants to A/B (default: every variant in the cache)",
     )
     return p.parse_args()
 
@@ -207,8 +214,13 @@ def main() -> None:
 
     # ---- A/B: GroupKFold CV AUC per variant ----
     cv_scores = {}
-    for v in FEATURE_VARIANTS:
+    wanted = [v.strip() for v in args.variants.split(",")] if args.variants else list(FEATURE_VARIANTS)
+    unknown = [v for v in wanted if v not in FEATURE_VARIANTS]
+    if unknown:
+        raise SystemExit(f"Unknown variant(s) {unknown}; choose from {FEATURE_VARIANTS}")
+    for v in wanted:
         if v not in Xtr:
+            print(f"variant {v} not in the feature cache; skipping")
             continue
         cv_scores[v] = cv_auc(
             Xtr[v], ytr, sidtr, groups, vpi, C=args.C, n_splits=args.cv_splits
@@ -302,11 +314,11 @@ def main() -> None:
         "feature_variant": winner,
         "feature_dim": int(feature_dim_for_variant(winner, cfg["use_forensic"])),
         "calibration": calibration,
-        "param_note": "Frozen CLIP ViT-B/32 + logistic regression, well under 2B params",
+        "param_note": f"{_encoder_note(winner, cfg['clip_model_id'])} + logistic regression",
         "training_data": (
             "SID-Set subset. Binary 0=real vs 1=AIGC-positive (full-synthetic + tampered). "
-            "Paired official degradations + consistency means. Tampered rows upweighted. "
-            "Features via embed_for_score TTA. WildFake unused."
+            f"Clean + one paired official view per family ({'/'.join(PAIR_FAMILIES)}) per image, "
+            "each row the TTA-averaged embedding. Tampered rows upweighted. WildFake unused."
         ),
         "extra_view_caches": extra_names,
         "score_path": "embed_for_score",
@@ -329,26 +341,39 @@ def _row_paths(cfg, idx: np.ndarray) -> list[str]:
     return [paths[i] for i in idx if i < len(paths)]
 
 
+def _encoder_note(winner: str, clip_id: str) -> str:
+    enc = f"frozen {clip_id} (ViT-B/32, ~88M)"
+    if winner in ("dino", "fuse"):
+        enc += f" + frozen {DINO_MODEL_ID} CLS (DINOv2-small, ~22M)"
+    return enc + "; well under 2B params"
+
+
 def _write_weights_note(cfg, metrics, winner, calibration) -> None:
     note = cfg["artifacts_dir"] / "WEIGHTS.txt"
     cv = metrics.get("cv_auc", {})
+    dims = "  ".join(f"{v}={BASE_DIMS[v]}+forensic" for v in FEATURE_VARIANTS)
+    cv_line = "  ".join(
+        f"{v}={cv[v]:.4f}" if isinstance(cv.get(v), float) else f"{v}=n/a" for v in FEATURE_VARIANTS
+    )
+    views = "/".join(PAIR_FAMILIES)
     note.write_text(
         (
             "SID-SET SUBSET TRAINED (not smoke)\n\n"
-            f"feature_variant={winner}  (pre=768+forensic, proj=512+forensic)\n"
-            f"CV AUC pre={cv.get('pre')}  proj={cv.get('proj')}\n"
-            f"n_train={metrics.get('n_train')}\n"
+            f"feature_variant={winner}  ({dims})\n"
+            f"CV AUC {cv_line}\n"
+            f"n_train={metrics.get('n_train')}  (rows = images x {metrics.get('views_per_image')} views)\n"
             f"n_val(test slice)={metrics.get('n_val')}\n"
             f"n_cal={metrics.get('n_cal')}\n"
             f"acc={metrics.get('acc')}\n"
             f"auc={metrics.get('auc')}\n"
             f"fpr95={metrics.get('fpr95')}\n"
             f"calibration={calibration}\n"
-            "Encoder: frozen openai/clip-vit-base-patch32 (ViT-B/32, well under 2B).\n"
+            f"Encoder: {_encoder_note(winner, cfg['clip_model_id'])}.\n"
             "Labels: SID-Set 0=real, 1=AIGC-positive (includes tampered/label 2). WildFake unused.\n"
-            "Paired official JPEG/blur/resize views + consistency means. Tampered weight=5.\n"
-            "Fit on embed_for_score TTA (same as infer). Sigmoid-calibrated on group-disjoint\n"
-            "30% of val; metrics reported on the held-out 70% test slice only.\n"
+            f"Training rows: clean + one paired official view per family ({views}); each row is the\n"
+            "TTA-averaged embedding from embed_for_score (same path as infer). Tampered weight=5.\n"
+            "Sigmoid-calibrated on group-disjoint 30% of val; metrics reported on the held-out 70%\n"
+            "test slice only.\n"
         ),
         encoding="utf-8",
     )

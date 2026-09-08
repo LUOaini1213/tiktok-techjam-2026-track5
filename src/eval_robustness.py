@@ -126,6 +126,7 @@ def evaluate_robustness(
     transforms: list[str] | None = None,
     weights: Path | None = None,
     scores_dir: Path | None = None,
+    crops: int = 0,
 ) -> Path:
     # Pure argument validation, before anything expensive or destructive: a typo should
     # fail instantly rather than after a CLIP load, and must never reach the "w" open
@@ -160,15 +161,20 @@ def evaluate_robustness(
     # Opened with "w" below, which truncates. Everything that can reject the call --
     # bad transform names, a missing model, an empty slice -- has to happen first, or a
     # failed run destroys the previous table.
-    dest = Path(table_path) if table_path else cfg["results_dir"] / "robustness_table.csv"
+    suffix = f"_crops{crops}" if crops else ""
+    dest = Path(table_path) if table_path else cfg["results_dir"] / f"robustness_table{suffix}.csv"
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     # Per-image scores are persisted so any later metric (a new operating point, a
     # per-class breakdown, a paired test against another head) never needs a re-run.
     # Fixed location, NOT relative to the table path: sharded runs write their part CSVs to
     # a scratch dir, and the scores must still land in one place.
-    scores_dir = Path(scores_dir) if scores_dir else cfg["results_dir"] / "scores"
-    scores_dir.mkdir(parents=True, exist_ok=True)
+    # A truncated run (max_images) must not overwrite the full-run score files with a handful
+    # of rows, so it persists scores only into a directory the caller named explicitly.
+    persist_scores = scores_dir is not None or max_images is None
+    scores_dir = Path(scores_dir) if scores_dir else cfg["results_dir"] / f"scores{suffix}"
+    if persist_scores:
+        scores_dir.mkdir(parents=True, exist_ok=True)
 
     with dest.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=TABLE_FIELDS)
@@ -186,15 +192,17 @@ def evaluate_robustness(
                     tta_jpeg_quality=cfg["tta_jpeg_quality"],
                     tta_resize_scale=cfg["tta_resize_scale"],
                     variant=variant,
+                    crops=crops,
                 )
                 scores.append(score_from_embed(bundle, feat))
                 y_true.append(int(row["label"]))
             y = np.array(y_true)
             s = np.array(scores)
-            np.savez_compressed(
-                scores_dir / f"{name}.npz",
-                y=y, score=s, path=np.array([Path(r["path"]).name for r in rows]),
-            )
+            if persist_scores:
+                np.savez_compressed(
+                    scores_dir / f"{name}.npz",
+                    y=y, score=s, path=np.array([Path(r["path"]).name for r in rows]),
+                )
             hard = (s >= 0.5).astype(int)
             acc = float(accuracy_score(y, hard))
             try:

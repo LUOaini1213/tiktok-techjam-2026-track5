@@ -19,8 +19,12 @@ def embed_for_score(
     tta_jpeg_quality: int = 70,
     tta_resize_scale: float = 0.5,
     variant: str = DEFAULT_FEATURE_VARIANT,
+    crops: int = 0,
 ) -> np.ndarray:
-    """Inference-aligned single-variant embedding. Default TTA on (clean + JPEG-70 + 0.5x)."""
+    """Inference-aligned single-variant embedding. Default TTA on (clean + JPEG-70 + 0.5x).
+
+    `crops=N` adds N corner/centre crops to the averaged view set (eval-time multi-crop).
+    """
     return embed_one(
         image,
         model_id=model_id,
@@ -29,6 +33,7 @@ def embed_for_score(
         tta_jpeg_quality=tta_jpeg_quality,
         tta_resize_scale=tta_resize_scale,
         variant=variant,
+        crops=crops,
     )
 
 

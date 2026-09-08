@@ -10,9 +10,9 @@ import numpy as np
 import torch
 from PIL import Image
 from scipy.fftpack import dct
-from transformers import CLIPModel, CLIPProcessor
+from transformers import AutoImageProcessor, AutoModel, CLIPModel, CLIPProcessor
 
-from .augment import jpeg_compress, down_up_resize, to_rgb
+from .augment import down_up_resize, jpeg_compress, multi_crops, to_rgb
 
 FORENSIC_DIM = 28
 CLIP_DIM = 512  # projected (visual_projection) feature width
@@ -23,12 +23,18 @@ CLIP_PRE_DIM = 768  # pre-projection (pooler_output, post-LayerNorm CLS) feature
 #   "pre"  = pooler_output, 768-d                     (post-LayerNorm CLS, pre-projection)
 # Cozzolino et al. (arXiv:2312.00195) find pre-projection usually beats projected for
 # linear-probe fake detection; train.py picks the winner by GroupKFold CV AUC.
-FEATURE_VARIANTS = ("pre", "proj")
+DINO_MODEL_ID = "facebook/dinov2-small"
+DINO_DIM = 384  # DINOv2-small CLS width
+FEATURE_VARIANTS = ("pre", "proj", "dino", "fuse")
+BASE_DIMS = {"pre": CLIP_PRE_DIM, "proj": CLIP_DIM, "dino": DINO_DIM, "fuse": CLIP_DIM + DINO_DIM}
 DEFAULT_FEATURE_VARIANT = "pre"
 
 
 def clip_dim_for_variant(variant: str) -> int:
-    return CLIP_PRE_DIM if variant == "pre" else CLIP_DIM
+    """Width of the backbone part of a variant (before the forensic dims are appended)."""
+    if variant not in BASE_DIMS:
+        raise ValueError(f"unknown feature variant {variant!r}; expected one of {FEATURE_VARIANTS}")
+    return BASE_DIMS[variant]
 
 
 def feature_dim_for_variant(variant: str, use_forensic: bool) -> int:
@@ -93,6 +99,32 @@ def clip_embed_batch(
 ) -> np.ndarray:
     """Back-compat single-variant helper (defaults to the 512-d projected feature)."""
     return clip_embed_batch_dual(images, model_id=model_id)[variant]
+
+
+@lru_cache(maxsize=1)
+def load_dino(model_id: str = DINO_MODEL_ID):
+    device = get_device()
+    processor = AutoImageProcessor.from_pretrained(model_id)
+    model = AutoModel.from_pretrained(model_id)
+    model.eval()
+    model.to(device)
+    return processor, model, device
+
+
+def dino_embed_batch(images: Sequence[Image.Image], model_id: str = DINO_MODEL_ID) -> np.ndarray:
+    """DINOv2 CLS token (pooler_output), L2-normalised, shape (n, DINO_DIM).
+
+    Self-supervised features fail on different images than CLIP's language-aligned ones;
+    a linear head over both is the cheapest fusion that exploits that.
+    """
+    processor, model, device = load_dino(model_id)
+    images = [to_rgb(im) for im in images]
+    inputs = processor(images=list(images), return_tensors="pt")
+    pixel = inputs["pixel_values"].to(device)
+    with torch.no_grad():
+        out = model(pixel_values=pixel)
+        cls = torch.nn.functional.normalize(out.pooler_output.float(), dim=-1)
+    return cls.cpu().numpy().astype(np.float32)
 
 
 def _forensic_work(image: Image.Image, size: int = FORENSIC_WORK_SIZE) -> np.ndarray:
@@ -217,12 +249,15 @@ def _tta_clip_means(
     use_tta: bool,
     tta_jpeg_quality: int,
     tta_resize_scale: float,
+    extra_views: "Sequence[Image.Image] | None" = None,
 ) -> dict[str, np.ndarray]:
     """TTA-averaged, re-L2-normalized CLIP means for BOTH variants from one view set."""
     views = [image]
     if use_tta:
         views.append(jpeg_compress(image, tta_jpeg_quality))
         views.append(down_up_resize(image, tta_resize_scale))
+    if extra_views:
+        views.extend(extra_views)
     dual = clip_embed_batch_dual(views, model_id=model_id)
     means = {}
     for variant, feats in dual.items():
@@ -240,17 +275,32 @@ def embed_one_dual(
     use_tta: bool = True,
     tta_jpeg_quality: int = 70,
     tta_resize_scale: float = 0.5,
+    variants: "Sequence[str] | None" = None,
+    crops: int = 0,
 ) -> dict[str, np.ndarray]:
-    """Fused feature for BOTH variants: {"pre": pre+forensic, "proj": proj+forensic}.
+    """Fused feature for EVERY variant: pre / proj / dino / fuse, each + forensic.
 
     The forensic vector is computed ONCE and shared; only the CLIP half differs. This is
     the single shared embed path -- extract/train/eval/infer all go through here so the
     two cached variants are guaranteed identical to what infer produces at score time.
     """
     image = to_rgb(image)
-    means = _tta_clip_means(image, model_id, use_tta, tta_jpeg_quality, tta_resize_scale)
+    wanted = tuple(variants) if variants else FEATURE_VARIANTS
+    extra = multi_crops(image, crops) if crops else []
+    means = _tta_clip_means(image, model_id, use_tta, tta_jpeg_quality, tta_resize_scale, extra)
+    # DINOv2 is only run when a requested variant needs it, so a head shipped on a pure
+    # CLIP variant keeps its original per-image cost. Clean view (+ crops) only: no
+    # JPEG/resize TTA for the expensive tower.
+    dino = None
+    if any(v in ("dino", "fuse") for v in wanted):
+        d = dino_embed_batch([image] + extra).mean(axis=0)
+        dino = (d / (np.linalg.norm(d) + 1e-8)).astype(np.float32)
     forensic = forensic_vector(image) if use_forensic else np.zeros(FORENSIC_DIM, dtype=np.float32)
-    return {v: fuse_features(means[v], forensic, use_forensic) for v in FEATURE_VARIANTS}
+    bases = {"pre": means["pre"], "proj": means["proj"]}
+    if dino is not None:
+        bases["dino"] = dino
+        bases["fuse"] = np.concatenate([means["proj"], dino]).astype(np.float32)
+    return {v: fuse_features(bases[v], forensic, use_forensic) for v in wanted}
 
 
 def embed_one(
@@ -261,6 +311,7 @@ def embed_one(
     tta_jpeg_quality: int = 70,
     tta_resize_scale: float = 0.5,
     variant: str = DEFAULT_FEATURE_VARIANT,
+    crops: int = 0,
 ) -> np.ndarray:
     """Single-variant fused feature (default pre-projection). Shares embed_one_dual."""
     return embed_one_dual(
@@ -270,6 +321,8 @@ def embed_one(
         use_tta=use_tta,
         tta_jpeg_quality=tta_jpeg_quality,
         tta_resize_scale=tta_resize_scale,
+        variants=(variant,),
+        crops=crops,
     )[variant]
 
 

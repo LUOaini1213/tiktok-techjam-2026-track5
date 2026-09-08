@@ -39,6 +39,7 @@ def main() -> None:
     )
     p.add_argument("--out", type=Path, default=None, help="Write this CSV instead of results/robustness_table.csv")
     p.add_argument("--weights", type=Path, default=None, help="Score with this bundle instead of the shipped one (A/B)")
+    p.add_argument("--crops", type=int, default=0, help="Eval-time multi-crop TTA: add N corner/centre crops per image")
     p.add_argument(
         "--merge",
         nargs="+",
@@ -58,6 +59,7 @@ def main() -> None:
         use_tta=False if args.no_tta else None,
         table_path=args.out,
         weights=args.weights,
+        crops=args.crops,
         transforms=[t.strip() for t in args.transforms.split(",")] if args.transforms else None,
     )
     print(f"Wrote {path}")

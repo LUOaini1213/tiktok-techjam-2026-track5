@@ -58,7 +58,7 @@ class MergeTests(unittest.TestCase):
             dest = Path(td) / "part.csv"
             out = evaluate_robustness(
                 max_images=2, use_tta=False, table_path=dest, bootstrap_reps=10,
-                transforms=["clean", "jpeg_30"],
+                transforms=["clean", "jpeg_30"], scores_dir=Path(td) / "scores",
             )
             with out.open(newline="", encoding="utf-8") as f:
                 rows = list(csv.DictReader(f))

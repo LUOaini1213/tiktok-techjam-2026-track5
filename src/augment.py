@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import random
+import zlib
 from typing import Optional
 
 import cv2
@@ -52,8 +53,13 @@ def down_up_resize(image: Image.Image, scale: float) -> Image.Image:
 
 def gaussian_noise(image: Image.Image, sigma: float, rng: np.random.Generator | None = None) -> Image.Image:
     """Additive Gaussian noise. Pass `rng` for a reproducible draw (feature caching)."""
-    arr = np.asarray(to_rgb(image), dtype=np.float32) / 255.0
-    rng = rng or np.random.default_rng()
+    raw = np.ascontiguousarray(np.asarray(to_rgb(image)))
+    arr = raw.astype(np.float32) / 255.0
+    if rng is None:
+        # Content-seeded: the same image always receives the same noise draw, so every
+        # evaluation row is reproducible run-to-run without threading a seed through each
+        # caller. (Before this, the three noise rows drifted in the third decimal per run.)
+        rng = np.random.default_rng(zlib.crc32(raw.tobytes()))
     noisy = arr + rng.normal(0.0, float(sigma), size=arr.shape)
     noisy = np.clip(noisy, 0.0, 1.0)
     return Image.fromarray((noisy * 255.0).astype(np.uint8), mode="RGB")
@@ -91,6 +97,24 @@ def center_crop(image: Image.Image, ratio: float = CENTER_CROP) -> Image.Image:
     return cropped.resize((w, h), Image.BILINEAR)
 
 
+def multi_crops(image: Image.Image, n: int, scale: float = 0.8) -> list[Image.Image]:
+    """`n` crops at `scale` of the image, resized back to the original size.
+
+    n=1 -> centre; n=2..4 -> that many corners; n=5 -> four corners + centre. Resizing
+    back keeps every downstream preprocessor (CLIP's 224 shortest-side, the native-scale
+    forensic crop) exactly as it is for the full view.
+    """
+    if n <= 0:
+        return []
+    image = to_rgb(image)
+    w, h = image.size
+    cw, ch = max(1, int(round(w * scale))), max(1, int(round(h * scale)))
+    corners = [(0, 0), (w - cw, 0), (0, h - ch), (w - cw, h - ch)]
+    centre = ((w - cw) // 2, (h - ch) // 2)
+    boxes = [centre] if n == 1 else corners[: min(n, 4)] + ([centre] if n >= 5 else [])
+    return [image.crop((l, t, l + cw, t + ch)).resize((w, h), Image.BILINEAR) for l, t in boxes]
+
+
 TRANSFORM_TABLE = {
     "jpeg": lambda img, q: jpeg_compress(img, q),
     "blur": lambda img, s: gaussian_blur(img, s),
@@ -119,7 +143,10 @@ EVAL_PRESETS = [
 ]
 
 
-PAIR_FAMILIES = ("jpeg", "blur", "resize")
+# One degraded training view per family. The ablation showed the families we scored but
+# never trained on (noise, jitter) were exactly the weakest rows, so every official
+# family except crop (already the strongest untrained row) is now a training view.
+PAIR_FAMILIES = ("jpeg", "blur", "resize", "noise", "jitter")
 
 
 def apply_named(image: Image.Image, name: Optional[str], param) -> Image.Image:
@@ -133,7 +160,11 @@ def paired_official_views(
     rng: random.Random | None = None,
     family: str | None = None,
 ) -> tuple[Image.Image, Image.Image, str]:
-    """Clean + one official JPEG/blur/down-up resize view, same spatial size."""
+    """Clean + one official degraded view (jpeg/blur/resize/noise/jitter), same size.
+
+    Every random choice, including the noise draw, comes from `rng`, so a per-image
+    seeded RNG reproduces the identical view on a resumed extraction.
+    """
     rng = rng or random.Random(0)
     clean = to_rgb(image)
     family = family or rng.choice(PAIR_FAMILIES)
@@ -143,8 +174,14 @@ def paired_official_views(
         degraded = jpeg_compress(clean, rng.choice(JPEG_QUALITIES))
     elif family == "blur":
         degraded = gaussian_blur(clean, rng.choice(BLUR_SIGMAS))
-    else:
+    elif family == "resize":
         degraded = down_up_resize(clean, rng.choice(RESIZE_SCALES))
+    elif family == "noise":
+        degraded = gaussian_noise(
+            clean, rng.choice(NOISE_SIGMAS), np.random.default_rng(rng.getrandbits(32))
+        )
+    else:  # jitter: random +/- amount per channel from the same stream
+        degraded = color_jitter(clean, COLOR_JITTER, rng)
     return clean, degraded, family
 
 

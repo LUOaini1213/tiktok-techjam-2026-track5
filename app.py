@@ -79,7 +79,7 @@ def main() -> None:
         ],
         title="RepostGuard — AIGC detection after redistribution",
         description=(
-            "TikTok TechJam 2026 Track 5. Frozen CLIP ViT-B/32 + forensic stats + TTA. "
+            "TikTok TechJam 2026 Track 5. Frozen CLIP ViT-B/32 + DINOv2-small + forensic stats + TTA. "
             f"{status} Drag JPEG/blur/crop to simulate social-media reposts."
         ),
     )

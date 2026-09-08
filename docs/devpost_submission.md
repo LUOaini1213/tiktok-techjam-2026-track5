@@ -1,5 +1,7 @@
 # Devpost 提交交接单 — TikTok TechJam 2026
 
+> **状态（2026-09-08）**：本交接单记录的是截止日提交的 v1 版本（CLIP 单编码器、2000 张/类）。评审结束后仓库升级到 v2（8000 张/类、加入 jitter 训练视图、CLIP + DINOv2-small 融合、内容种子化的评测噪声），所有数字在同一份 1400 张留出测试集上重新测量，见 README 的 *What changed after the deadline* 小节；v1 的结果、权重和逐图分数完整保留在 `results/v1/`。
+
 **给代填的人：** 下面每一项都是照抄即可，不需要理解内容。按顺序填完点提交。
 遇到没列出的可选字段，留空即可。
 提交页面：TikTok TechJam 2026 on Devpost → 我的项目 → Edit

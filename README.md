@@ -1,5 +1,9 @@
 # RepostGuard
 
+> **Not a competition entry.** This was built against the TikTok TechJam 2026
+> Track 5 brief, but it was **never submitted** to Devpost. Nothing here is a
+> contest result, and no placement is claimed.
+
 [![tests](https://github.com/LUOaini1213/tiktok-techjam-2026-track5/actions/workflows/tests.yml/badge.svg)](https://github.com/LUOaini1213/tiktok-techjam-2026-track5/actions/workflows/tests.yml)
 
 **AI-generated-image detection that is scored on the repost, not the original.** A frozen
@@ -22,9 +26,10 @@ v2 numbers on the held-out 1400-image slice of SID-Set, calibration images exclu
 deadline build (v1: clean 0.963, mean 0.958, worst 0.941) already beat a UnivFD-style linear
 probe on 15 / 15 transforms in-distribution and by +0.12 to +0.25 AUC on an unseen generator
 family; v2 then improves every one of the 15 conditions on the same images (+0.019 AUC on
-average, 14 of 15 beyond overlapping bootstrap CIs). Built solo for TikTok TechJam 2026
-(Track 5) in about four days on a laptop with no GPU; everything after the deadline is on the
-same branch history.
+average, 14 of 15 beyond overlapping bootstrap CIs). Built solo in about four days on a laptop with no GPU,
+against the TikTok TechJam 2026 Track 5 brief — **this project was never submitted to
+Devpost**, so nothing here is a contest result. Work continued after the brief's deadline
+on the same branch history; the v1 / v2 split below marks that line.
 
 ![Ablation: features x training views vs a UnivFD-style baseline](results/ablation_chart.png)
 

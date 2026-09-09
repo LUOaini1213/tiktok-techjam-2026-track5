@@ -61,9 +61,10 @@ sits on top of are public checkpoints, so the **first** run downloads CLIP ViT-B
 DINOv2-small (~440 MB together) from the Hugging Face hub and caches them. After that a run of
 the two sample images takes about 30 s on a CPU laptop. `python app.py` opens a Gradio demo with
 JPEG / blur / noise / crop sliders. The [3-minute video](https://youtu.be/wbeGLieLZ9c) is
-rendered from the committed result CSVs by `scripts/make_video.py`; the uploaded cut is the
-submitted one and therefore quotes the **v1** numbers, so re-running the script against the
-current CSVs produces the v2 figures instead.
+rendered from the committed result CSVs by `scripts/make_video.py`; the uploaded cut was
+rendered at the brief's deadline and therefore quotes the **v1** numbers, so re-running the
+script against the current CSVs produces the v2 figures instead. The clip is public on
+YouTube because it was made to be, but it was never attached to a Devpost entry.
 
 ## Project overview
 

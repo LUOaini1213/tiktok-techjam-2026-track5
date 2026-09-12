@@ -88,9 +88,18 @@ YouTube because it was made to be, but it was never attached to a Devpost entry.
 
 CPU-only works; a CUDA GPU makes feature extraction much faster (the code auto-uses CUDA when available).
 
+Use Python 3.11 or 3.12 in a virtual environment (`python -m venv .venv`,
+then `source .venv/bin/activate` on Linux/macOS or `.venv\Scripts\Activate.ps1`
+in PowerShell). The shipped calibrated `joblib` bundle records scikit-learn
+**1.9.0**, which is pinned in `requirements.txt`; an older installation such as
+1.3 cannot deserialize its `FrozenEstimator`. The bundle also requires NumPy 2
+serialization (`numpy._core`); the numerical dependency floors cover that ABI.
+Install the requirements before
+running inference, even if other ML packages are already available.
+
 ```bat
 python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-python -m pip install -r requirements.txt
+python -m pip install --upgrade -r requirements.txt
 ```
 
 ## Steps to reproduce results
@@ -429,7 +438,7 @@ The `k` highest-scoring FPs and lowest-scoring FNs, with their per-image clean a
 ## Limitations & what we would improve with more time
 
 - **Generator diversity.** Trained on SID-Set only. Unknown commercial generators (Flux, Midjourney v7, SD3) still shift CLIP geometry. The listed resources (CIFAKE, WildFake-train) are allowed for training and would be the first addition — mixing generator families is the highest-leverage next step.
-- **Remaining untrained family.** `crop` is the one scored family that is still not a training view (v2 added `jitter`). We tried to cover it at evaluation time instead, with multi-crop TTA (`make_tables.py --crops N`), and measured it rather than assuming it helped: it does not (mean -0.0041 AUC, `results/ab_crops4.csv`). A crop **training** view, or re-fitting the head on the 7-view embedding it would then be scored on, is the version of this idea still worth trying.
+- **Remaining untrained family.** `crop` is the one scored family that is still not a training view (v2 added `jitter`). We tried to cover it at evaluation time instead, with multi-crop TTA (`make_tables.py --crops N`), and measured it rather than assuming it helped: it does not (mean -0.0039 AUC, `results/ab_crops4.csv`). A crop **training** view, or re-fitting the head on the 7-view embedding it would then be scored on, is the version of this idea still worth trying.
 - **Hardest rows.** Extreme 0.25× thumbnails remain the weakest transform; a small learned frequency head or a second forensic scale could help.
 - **Local edits / face swaps** are only partially covered (tampered class upweight); a dedicated localization branch is out of scope here.
 - **Batched inference.** `embed_for_score` scores one image per forward, so the only way to use all cores is to shard across processes -- and each process holds its own ~1.5 GB copy of CLIP + DINOv2 and is single-core bound (about 10 s per training image for six views: three TTA CLIP forwards each, DINOv2, and the forensic branch at native resolution). On a 16 GB box that caps us at 4-5 workers; more just pages. Batching N images per forward would need one model copy and beat all the shards; we kept the one-image path because it is the single code path shared by train/eval/infer, which is what guarantees cached features and live scores are byte-identical.

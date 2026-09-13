@@ -36,9 +36,16 @@ jobs:
         run: |
           python infer.py --input_dir samples --output preds.json
           python - <<'PY'
-          import json
+          import json, pathlib
           rows = json.load(open("preds.json", encoding="utf-8"))
           assert len(rows) == 2 and all(set(r) == {"image_path", "pred"} for r in rows)
           assert all(0.0 <= r["pred"] <= 1.0 for r in rows)
-          print("preds.json ok:", rows)
+          # 0 <= pred <= 1 alone survives a swapped head or a drifted encoder: this fixture's
+          # score has already moved from 0.6884 to 0.0374 between two green runs. Pin it.
+          golden = json.load(open("tests/golden_smoke.json", encoding="utf-8"))
+          tol, expected = golden["tolerance"], golden["tta"]
+          for r in rows:
+              name = pathlib.PurePath(r["image_path"]).name
+              assert abs(r["pred"] - expected[name]) < tol, (name, r["pred"], expected[name])
+          print("preds.json ok, matches tests/golden_smoke.json:", rows)
           PY

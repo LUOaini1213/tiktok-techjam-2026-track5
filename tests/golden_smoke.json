@@ -1,0 +1,12 @@
+{
+  "note": "P(AIGC) that the shipped head (artifacts/repostguard.joblib) gives the two procedural fixtures in samples/. Both fixtures are written by scripts/make_samples.py and neither is AI-generated: real_noise.jpg is a seeded noise-plus-gradient field, synth_pattern.png is a sin/cos/modulo stripe pattern. They exist to exercise the infer.py contract, not to demonstrate detection, so the values below are a regression anchor rather than a claim. Asserted by .github/workflows/tests.yml and tests/test_augment_contract.py; regenerate with scripts/make_golden_smoke.py after any change to the head, the encoders or the feature path.",
+  "tolerance": 0.001,
+  "tta": {
+    "real_noise.jpg": 0.000462,
+    "synth_pattern.png": 0.037427
+  },
+  "no_tta": {
+    "real_noise.jpg": 0.02282,
+    "synth_pattern.png": 0.475957
+  }
+}

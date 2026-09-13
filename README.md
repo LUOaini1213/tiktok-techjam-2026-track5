@@ -57,6 +57,18 @@ python -m pip install -r requirements.txt
 python infer.py --input_dir samples --output preds.json     :: directory in, JSON out
 ```
 
+`samples/` holds the two 256x256 procedural fixtures written by `scripts/make_samples.py`:
+a seeded noise-and-gradient field and a sin/cos stripe pattern. Neither is AI-generated and
+neither comes from SID-Set -- they exist to exercise the `infer.py` contract, not to show
+detection, so the shipped head scores both well under the 0.5 threshold:
+
+<!-- SAMPLES -->
+`real_noise.jpg` 0.0005, `synth_pattern.png` 0.0374 -- through the shipped 3-view TTA path. Both values are pinned in `tests/golden_smoke.json` and asserted by CI to 0.001, so a swapped head or a drifted encoder turns the badge red instead of quietly changing what the smoke test prints.
+<!-- /SAMPLES -->
+
+The detection numbers are the tables below, measured on held-out SID-Set images and a
+cross-source WildFake subset.
+
 Our weights ship in the repo (`artifacts/repostguard.joblib`, 28 KB); the two frozen encoders it
 sits on top of are public checkpoints, so the **first** run downloads CLIP ViT-B/32 and
 DINOv2-small (~440 MB together) from the Hugging Face hub and caches them. After that a run of
@@ -106,7 +118,7 @@ python -m pip install --upgrade -r requirements.txt
 ## Steps to reproduce results
 
 ```bat
-python scripts/make_samples.py                              :: tiny fixtures
+python scripts/make_samples.py                              :: the two procedural contract fixtures
 python scripts/download_data.py --train_per_class 8000 --val_per_class 1000   :: v2 scale (v1 used 2000/class)
 :: feature cache: 6 views/train image (clean/jpeg/blur/resize/noise/jitter), variants pre/proj/dino/fuse.
 :: One process per shard; each holds CLIP + DINOv2 (~1.5 GB, single-core bound). Merge refuses a short cache.
@@ -120,6 +132,7 @@ python scripts/make_chart.py                                :: robustness bar ch
 python scripts/error_analysis.py                            :: FP/FN note
 python scripts/eval_demo.py                                 :: WildFake demonstration benchmark
 python scripts/compare_ab.py                                :: A/B vs results/baseline/
+python scripts/make_golden_smoke.py                         :: re-pin the samples/ scores CI asserts
 python scripts/update_readme.py                             :: fill the README result sections
 python infer.py --input_dir samples --output preds.json     :: the shipped entry point (directory in, JSON out)
 python app.py                                               :: optional Gradio demo

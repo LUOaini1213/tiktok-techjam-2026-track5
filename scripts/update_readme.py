@@ -407,6 +407,20 @@ def headline_section(results: Path) -> str:
     return "\n".join(table) + "\n\n" + note
 
 
+def samples_section(root: Path) -> str:
+    path = root / "tests" / "golden_smoke.json"
+    if not path.exists():
+        return MISSING
+    golden = json.loads(path.read_text(encoding="utf-8"))
+    scored = ", ".join(f"`{name}` {value:.4f}" for name, value in sorted(golden["tta"].items()))
+    return (
+        f"{scored} -- through the shipped 3-view TTA path. Both values are pinned in "
+        f"`tests/golden_smoke.json` and asserted by CI to {golden['tolerance']}, so a swapped "
+        "head or a drifted encoder turns the badge red instead of quietly changing what the "
+        "smoke test prints."
+    )
+
+
 def tests_count_section(root: Path) -> str:
     files = sorted((root / "tests").glob("test_*.py"))
     if not files:
@@ -439,6 +453,7 @@ def main() -> None:
     text = readme.read_text(encoding="utf-8")
     for name, body in (
         ("HEADLINE", headline_section(results)),
+        ("SAMPLES", samples_section(cfg["root"])),
         ("TESTS_COUNT", tests_count_section(cfg["root"])),
         ("ROBUSTNESS_TABLE", robustness_section(results)),
         ("DEMO_TABLE", demo_section(results)),

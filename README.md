@@ -24,7 +24,7 @@ same held-out images as the deadline build.
 
 v2 numbers on the held-out 1400-image slice of SID-Set, calibration images excluded. The
 deadline build (v1: clean 0.963, mean 0.958, worst 0.941) already beat a UnivFD-style linear
-probe on 15 / 15 transforms in-distribution and by +0.12 to +0.25 AUC on an unseen generator
+probe on 15 / 15 transforms in-distribution and by +0.12 to +0.21 AUC on an unseen generator
 family; v2 then improves every one of the 15 conditions on the same images (+0.019 AUC on
 average, 14 of 15 beyond overlapping bootstrap CIs). Built solo in about four days on a laptop with no GPU,
 against the TikTok TechJam 2026 Track 5 brief — **this project was never submitted to

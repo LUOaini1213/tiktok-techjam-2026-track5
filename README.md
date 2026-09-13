@@ -120,7 +120,7 @@ python scripts/error_analysis.py                            :: FP/FN note
 python scripts/eval_demo.py                                 :: WildFake demonstration benchmark
 python scripts/compare_ab.py                                :: A/B vs results/baseline/
 python scripts/update_readme.py                             :: fill the README result sections
-python infer.py --input_dir samples --output preds.json     :: required submission command
+python infer.py --input_dir samples --output preds.json     :: the shipped entry point (directory in, JSON out)
 python app.py                                               :: optional Gradio demo
 ```
 
@@ -240,10 +240,12 @@ Mean change -0.0039 AUC over 15 conditions (0 improved and 0 regressed beyond ov
 ### Which task definition? The same scores, split by class
 
 Every headline number above scores **real vs all AIGC**, and in SID-Set "AIGC" includes the
-*tampered* class -- real photographs with a locally generated edit. Most published detectors,
-and most other entries in this track, score real vs **fully synthetic** only, which is the
-easier problem. Since the per-image scores are persisted, both definitions come from the
-same run (`scripts/per_class_table.py`, `results/robustness_by_class.csv`):
+*tampered* class -- real photographs with a locally generated edit. Most published detectors
+score real vs **fully synthetic** only, which is the easier problem; so did most of the 13
+Track-5 Devpost write-ups read in full during a 2026-09-03 survey of the 130 public entries
+(`docs/competitor_review.md`), usually without saying which definition they used. Since the
+per-image scores are persisted, both definitions come from the same run
+(`scripts/per_class_table.py`, `results/robustness_by_class.csv`):
 
 <!-- BY_CLASS -->
 | Transform | AUC: real vs **all AIGC** (headline) | AUC: real vs **fully synthetic** | AUC: real vs **tampered** | TPR@1%FPR all | TPR@1%FPR synthetic |
@@ -479,7 +481,7 @@ src/                     features (CLIP + forensic), augment (15 transforms), ev
 scripts/                 data download, feature cache, train, tables, ablation, leakage control, video
 results/                 every table in the README, per-image scores, baseline snapshot
 artifacts/               shipped head (repostguard.joblib) + WEIGHTS.txt
-docs/                    findings write-up, competitor review, submission sheet, video script
+docs/                    findings write-up, competitor review, unused Devpost handover sheet, video script
 tests/                   52 tests; dataset-dependent ones skip on a clean checkout
 ```
 

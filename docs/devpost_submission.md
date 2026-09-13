@@ -105,11 +105,9 @@ python, pytorch, clip, transformers, huggingface, scikit-learn, numpy, scipy, op
 
 ## 8. Upload a File（上传文件，限 35 MB）
 
-上传这个文件（3.6 MB）：
-
-```
-repostguard-track5-submission.zip
-```
+这份交接单从未被使用，当时准备上传的那个打包件已不再保留在仓库里。
+截止日那一版的凭证改看 `results/v1/`（v1 的 head、WEIGHTS、逐张分数、稳健性表），
+以及提交 `e9769b4` 的仓库历史。
 
 ---
 
@@ -242,7 +240,6 @@ Five things the grid says, in order of importance:
 
 | 文件 | 用途 | 位置 |
 |---|---|---|
-| `repostguard-track5-submission.zip` | 第 8 项上传 | `docs/` |
 | `01_results.png` ~ `05_tradeoff.png` | 第 9 项画廊 | `docs/video/gallery/` |
 | `track5_demo.mp4` + `.srt` | 已上传 YouTube，链接见第 5 项。字幕可在 YouTube 后台补传 | `build/` |
 

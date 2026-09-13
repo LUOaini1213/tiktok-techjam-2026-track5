@@ -500,7 +500,7 @@ tests/                   unit + contract tests, run on every push
 ```
 
 <!-- TESTS_COUNT -->
-`tests/` defines 52 test functions across 12 files; the ones that need the SID-Set download skip on a clean checkout.
+`tests/` defines 59 test functions across 13 files; the ones that need the SID-Set download skip on a clean checkout.
 <!-- /TESTS_COUNT -->
 
 ## License

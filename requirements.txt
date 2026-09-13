@@ -11,7 +11,8 @@ numpy>=2,<3
 pillow>=10.0.0
 opencv-python>=4.10.0
 scipy>=1.13.0
-pandas>=2.2.2
+# scripts/make_chart.py and scripts/make_ablation_chart.py import it (Agg backend only).
+matplotlib>=3.8.0
 tqdm>=4.66.0
 pyyaml>=6.0
 huggingface_hub>=0.23.0

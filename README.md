@@ -484,7 +484,7 @@ out to be wrong.
 
 ## Tools
 
-Python, PyTorch (CPU or CUDA), Hugging Face `transformers` (CLIP) + `datasets` (SID-Set / demo subset streaming), scikit-learn, OpenCV, SciPy, NumPy, pandas, matplotlib, Gradio.
+Python, PyTorch (CPU or CUDA), Hugging Face `transformers` (CLIP ViT-B/32 and DINOv2-small) + `datasets` (SID-Set / demo subset streaming), scikit-learn, joblib, OpenCV, Pillow, SciPy, NumPy, tqdm, PyYAML, matplotlib (only the two chart scripts, on the Agg backend), Gradio. `scripts/make_video.py` additionally needs moviepy and edge-tts; they are not in `requirements.txt` because the rendered mp4 is committed.
 
 ## Repository layout
 

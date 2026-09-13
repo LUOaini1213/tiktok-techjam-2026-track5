@@ -14,19 +14,20 @@ intervals, a published baseline, a 2x2 ablation that explains *why* it holds, a 
 that shows it is not cheating, and a post-deadline v2 whose every change is re-measured on the
 same held-out images as the deadline build.
 
+<!-- HEADLINE -->
 | | AUC | TPR@1%FPR |
 |---|---:|---:|
 | clean | 0.981 | 0.734 |
 | mean over 14 transforms | 0.977 | 0.645 |
-| worst transform (0.25x thumbnail) | 0.968 | 0.604 |
-| real vs fully-synthetic only, mean over transforms | 0.989 | 0.763 |
+| worst transform (`resize_0.25`) | 0.968 | 0.604 |
+| real vs fully-synthetic only, mean over 14 transforms | 0.989 | 0.763 |
 | cross-source, unseen generator family (WildFake), clean | 0.966 | -- |
 
-v2 numbers on the held-out 1400-image slice of SID-Set, calibration images excluded. The
-deadline build (v1: clean 0.963, mean 0.958, worst 0.941) already beat a UnivFD-style linear
-probe on 15 / 15 transforms in-distribution and by +0.12 to +0.21 AUC on an unseen generator
-family; v2 then improves every one of the 15 conditions on the same images (+0.019 AUC on
-average, 14 of 15 beyond overlapping bootstrap CIs). Built solo in about four days on a laptop with no GPU,
+v2 numbers on the held-out 1400-image slice of SID-Set, calibration images excluded. The deadline build (v1: clean 0.963, mean 0.958, worst 0.941) already beat a UnivFD-style linear probe on 15 / 15 transforms in-distribution and by +0.12 to +0.21 AUC on an unseen generator family; v2 then improves 15 of the 15 conditions on the same images (+0.019 AUC on average, 14 of 15 beyond overlapping bootstrap CIs).
+<!-- /HEADLINE -->
+
+Every number in that block is regenerated from `results/` by `scripts/update_readme.py`, and
+CI fails if the README and the CSVs disagree. Built solo in about four days on a laptop with no GPU,
 against the TikTok TechJam 2026 Track 5 brief — **this project was never submitted to
 Devpost**, so nothing here is a contest result. Work continued after the brief's deadline
 on the same branch history; the v1 / v2 split below marks that line.
@@ -482,8 +483,12 @@ scripts/                 data download, feature cache, train, tables, ablation, 
 results/                 every table in the README, per-image scores, baseline snapshot
 artifacts/               shipped head (repostguard.joblib) + WEIGHTS.txt
 docs/                    findings write-up, competitor review, unused Devpost handover sheet, video script
-tests/                   52 tests; dataset-dependent ones skip on a clean checkout
+tests/                   unit + contract tests, run on every push
 ```
+
+<!-- TESTS_COUNT -->
+`tests/` defines 52 test functions across 12 files; the ones that need the SID-Set download skip on a clean checkout.
+<!-- /TESTS_COUNT -->
 
 ## License
 

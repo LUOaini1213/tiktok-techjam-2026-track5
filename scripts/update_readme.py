@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -328,6 +329,97 @@ def by_class_section(results: Path) -> str:
     return f"{head}\n{body}{note}"
 
 
+def _split_clean(rows: list[dict]) -> tuple[dict, list[dict]]:
+    clean = next(r for r in rows if r["transform"] == "clean")
+    return clean, [r for r in rows if r["transform"] != "clean"]
+
+
+def _mean(values) -> float:
+    values = list(values)
+    return sum(values) / len(values)
+
+
+def _auc_by_head(rows: list[dict]) -> dict[tuple[str, str], float]:
+    return {(r["transform"], r["head"]): float(r["auc"]) for r in rows}
+
+
+def headline_section(results: Path) -> str:
+    """The first-screen summary table and the v1/v2 sentence under it.
+
+    These are the numbers most likely to be quoted outside the repo, so they are
+    derived here rather than typed: every cell traces back to a committed CSV.
+    """
+    rob = _rows(results / "robustness_table.csv")
+    by_class = _rows(results / "robustness_by_class.csv")
+    demo = _rows(results / "demo_benchmark.csv")
+    v1 = _rows(results / "v1" / "robustness_table.csv")
+    abl = _rows(results / "ablation_table.csv")
+    abl_demo = _rows(results / "ablation_demo_table.csv")
+    v1v2 = _rows(results / "ab_v1_v2.csv")
+    if not all([rob, by_class, demo, v1, abl, abl_demo, v1v2]):
+        return MISSING
+
+    clean, transformed = _split_clean(rob)
+    worst = min(transformed, key=lambda r: float(r["auc"]))
+    _, by_class_t = _split_clean(by_class)
+    demo_clean = next(r for r in demo if r["transform"] == "clean")
+
+    table = [
+        "| | AUC | TPR@1%FPR |",
+        "|---|---:|---:|",
+        f"| clean | {float(clean['auc']):.3f} | {float(clean['tpr_at_1fpr']):.3f} |",
+        f"| mean over {len(transformed)} transforms | {_mean(float(r['auc']) for r in transformed):.3f} "
+        f"| {_mean(float(r['tpr_at_1fpr']) for r in transformed):.3f} |",
+        f"| worst transform (`{worst['transform']}`) | {float(worst['auc']):.3f} "
+        f"| {float(worst['tpr_at_1fpr']):.3f} |",
+        f"| real vs fully-synthetic only, mean over {len(by_class_t)} transforms "
+        f"| {_mean(float(r['auc_synthetic']) for r in by_class_t):.3f} "
+        f"| {_mean(float(r['tpr1_synthetic']) for r in by_class_t):.3f} |",
+        f"| cross-source, unseen generator family (WildFake), clean | {float(demo_clean['auc']):.3f} | -- |",
+    ]
+
+    v1_clean, v1_transformed = _split_clean(v1)
+
+    # v1 is the `forensic_5v` corner of the 2x2; the UnivFD-style baseline is `clip_only_4v`.
+    ind = _auc_by_head(abl)
+    ind_names = sorted({r["transform"] for r in abl})
+    ind_wins = sum(1 for t in ind_names if ind[(t, "forensic_5v")] > ind[(t, "clip_only_4v")])
+    cross = _auc_by_head(abl_demo)
+    cross_deltas = [
+        cross[(t, "forensic_5v")] - cross[(t, "clip_only_4v")]
+        for t in sorted({r["transform"] for r in abl_demo})
+    ]
+
+    deltas = [float(r["delta_auc"]) for r in v1v2]
+    disjoint = sum(1 for r in v1v2 if r["ci_disjoint"] == "yes")
+
+    note = (
+        f"v2 numbers on the held-out {clean['n']}-image slice of SID-Set, calibration images "
+        f"excluded. The deadline build (v1: clean {float(v1_clean['auc']):.3f}, "
+        f"mean {_mean(float(r['auc']) for r in v1_transformed):.3f}, "
+        f"worst {min(float(r['auc']) for r in v1_transformed):.3f}) already beat a UnivFD-style "
+        f"linear probe on {ind_wins} / {len(ind_names)} transforms in-distribution and by "
+        f"{min(cross_deltas):+.2f} to {max(cross_deltas):+.2f} AUC on an unseen generator family; "
+        f"v2 then improves {sum(1 for d in deltas if d > 0)} of the {len(deltas)} conditions on "
+        f"the same images ({_mean(deltas):+.3f} AUC on average, {disjoint} of {len(deltas)} "
+        f"beyond overlapping bootstrap CIs)."
+    )
+    return "\n".join(table) + "\n\n" + note
+
+
+def tests_count_section(root: Path) -> str:
+    files = sorted((root / "tests").glob("test_*.py"))
+    if not files:
+        return MISSING
+    n = sum(
+        len(re.findall(r"^\s*def test_\w+", f.read_text(encoding="utf-8"), re.M)) for f in files
+    )
+    return (
+        f"`tests/` defines {n} test functions across {len(files)} files; the ones that need the "
+        "SID-Set download skip on a clean checkout."
+    )
+
+
 def replace_section(text: str, name: str, body: str) -> str:
     start, end = f"<!-- {name} -->", f"<!-- /{name} -->"
     i = text.find(start)
@@ -346,6 +438,8 @@ def main() -> None:
     readme = cfg["root"] / "README.md"
     text = readme.read_text(encoding="utf-8")
     for name, body in (
+        ("HEADLINE", headline_section(results)),
+        ("TESTS_COUNT", tests_count_section(cfg["root"])),
         ("ROBUSTNESS_TABLE", robustness_section(results)),
         ("DEMO_TABLE", demo_section(results)),
         ("AB_TABLE", ab_section(results)),
@@ -359,7 +453,7 @@ def main() -> None:
     for name, body in (("AB_V1V2", ab_v1v2_section(results)), ("CROPS_TABLE", crops_section(results))):
         if f"<!-- {name} -->" in text:
             text = replace_section(text, name, body)
-    readme.write_text(text, encoding="utf-8")
+    readme.write_text(text, encoding="utf-8", newline="\n")
     print(f"Updated {readme}")
 
 

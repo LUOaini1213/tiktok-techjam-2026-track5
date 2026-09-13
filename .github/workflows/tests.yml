@@ -25,7 +25,14 @@ jobs:
           OMP_NUM_THREADS: "2"
           HF_HUB_DISABLE_TELEMETRY: "1"
         run: python -m pytest tests/ -q
-      - name: Submission contract smoke test
+      - name: README numbers still regenerate from results/
+        # The README's result blocks are generated from results/*.csv. Regenerate them on a
+        # clean checkout and fail if anything moved: a hand-edited AUC, or a results/ file
+        # changed without re-running the script, both show up here as a non-empty diff.
+        run: |
+          python scripts/update_readme.py
+          git diff --exit-code README.md
+      - name: Inference contract smoke test
         run: |
           python infer.py --input_dir samples --output preds.json
           python - <<'PY'

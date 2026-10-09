@@ -1,6 +1,11 @@
 # RepostGuard — 3-minute demo video script
 
-TikTok TechJam 2026 Track 5. Target length **3:00**, public YouTube link.
+> **状态（2026-09-09）：本项目从未提交到 Devpost。** 这份脚本是照 TikTok TechJam 2026
+> Track 5 赛题写的，写作时假定会有评委观看，所以下文多处出现「评委」——**那是当时的写作意图，
+> 不代表本项目参加过评审**。视频本身已公开在 YouTube，但没有随任何 Devpost 条目提交。
+> 本仓不是参赛作品，不主张任何名次。
+
+照 TikTok TechJam 2026 Track 5 赛题写。Target length **3:00**, public YouTube link.
 
 **录制前准备 (checklist)**
 - `python scripts/make_samples.py` 已跑过；`artifacts/repostguard.joblib` 存在

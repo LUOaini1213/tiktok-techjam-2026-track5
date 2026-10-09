@@ -2,13 +2,16 @@ torch>=2.1.0
 torchvision>=0.16.0
 transformers>=4.40.0
 safetensors>=0.4.0
-scikit-learn>=1.3.0
+# The committed calibrated joblib bundle records sklearn 1.9.0.
+# Match its serialization version; old installs cannot load FrozenEstimator.
+scikit-learn==1.9.0
 joblib>=1.3.0
-numpy>=1.24.0
+# The shipped bundle also refers to numpy._core (NumPy 2 serialization).
+numpy>=2,<3
 pillow>=10.0.0
-opencv-python>=4.8.0
-scipy>=1.11.0
-pandas>=2.0.0
+opencv-python>=4.10.0
+scipy>=1.13.0
+pandas>=2.2.2
 tqdm>=4.66.0
 pyyaml>=6.0
 huggingface_hub>=0.23.0

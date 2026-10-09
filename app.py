@@ -13,8 +13,10 @@ sys.path.insert(0, str(ROOT))
 
 from src.augment import center_crop, gaussian_blur, gaussian_noise, jpeg_compress
 from src.config import load_config, model_path
+from src.decision import verdict
 from src.features import DEFAULT_FEATURE_VARIANT, embed_one
 from src.model import load_bundle, predict_proba
+from src.repost import CHAINS, apply_chain, rescale
 
 cfg = load_config()
 BUNDLE = None
@@ -28,7 +30,8 @@ def load_weights():
 
 
 def score_image(
-    image: Image.Image, jpeg_q: int, blur_sigma: float, noise_sigma: float, crop_ratio: float
+    image: Image.Image, jpeg_q: int, blur_sigma: float, noise_sigma: float, crop_ratio: float,
+    resize_scale: float = 1.0, scenario: str = "Manual sliders",
 ) -> tuple:
     if image is None:
         return "Upload an image", 0.0, image
@@ -43,17 +46,25 @@ def score_image(
         work = gaussian_noise(work, float(noise_sigma))
     if crop_ratio < 1.0:
         work = center_crop(work, float(crop_ratio))
+    if resize_scale < 1.0:
+        work = rescale(work, float(resize_scale))
+    if scenario in CHAINS:
+        # A selected scenario is applied directly to the uploaded original, so slider
+        # settings never silently stack another transformation on a named scenario.
+        work = apply_chain(image.convert("RGB"), scenario)
     feat = embed_one(
         work,
         model_id=META.get("clip_model_id", cfg["clip_model_id"]),
         use_forensic=META.get("use_forensic", True),
         use_tta=META.get("use_tta", True),
         variant=META.get("feature_variant", DEFAULT_FEATURE_VARIANT),
+        tta_jpeg_quality=META.get("tta_jpeg_quality", cfg["tta_jpeg_quality"]),
+        tta_resize_scale=META.get("tta_resize_scale", cfg["tta_resize_scale"]),
     )
     pred = float(predict_proba(BUNDLE, feat.reshape(1, -1))[0])
     pred = min(1.0, max(0.0, pred))
-    label = "Likely AIGC" if pred >= 0.5 else "Likely authentic"
-    return f"{label}  (p_AIGC = {pred:.3f})", pred, work
+    label = verdict(pred, META.get("decision_policy"))
+    return f"{label}  (AIGC score = {pred:.3f}; uncertainty may require review)", pred, work
 
 
 def main() -> None:
@@ -71,16 +82,19 @@ def main() -> None:
             gr.Slider(0, 2.0, value=0, step=0.1, label="Gaussian blur σ"),
             gr.Slider(0, 0.10, value=0, step=0.01, label="Gaussian noise σ (0 = skip)"),
             gr.Slider(0.5, 1.0, value=1.0, step=0.05, label="Center crop ratio"),
+            gr.Slider(0.125, 1.0, value=1.0, step=0.125, label="Resize down/up scale"),
+            gr.Dropdown(["Manual sliders", *CHAINS], value="Manual sliders", label="Repost scenario (overrides sliders)"),
         ],
         outputs=[
             gr.Textbox(label="Verdict"),
-            gr.Number(label="p(AIGC)"),
+            gr.Number(label="Calibrated AIGC score"),
             gr.Image(type="pil", label="Transformed view"),
         ],
         title="RepostGuard — AIGC detection after redistribution",
         description=(
             "TikTok TechJam 2026 Track 5. Frozen CLIP ViT-B/32 + DINOv2-small + forensic stats + TTA. "
-            f"{status} Drag JPEG/blur/crop to simulate social-media reposts."
+            f"{status} Simulate single edits or a complete repost chain. "
+            "Needs review means the model abstains; a low score is not proof of authenticity."
         ),
     )
     demo.launch()

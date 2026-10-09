@@ -88,8 +88,8 @@ def score_directory(
                 model_id=model_id,
                 use_forensic=use_forensic,
                 use_tta=use_tta,
-                tta_jpeg_quality=cfg["tta_jpeg_quality"],
-                tta_resize_scale=cfg["tta_resize_scale"],
+                tta_jpeg_quality=meta.get("tta_jpeg_quality", cfg["tta_jpeg_quality"]),
+                tta_resize_scale=meta.get("tta_resize_scale", cfg["tta_resize_scale"]),
                 variant=variant,
             )
             pred = score_from_embed(bundle, feat)

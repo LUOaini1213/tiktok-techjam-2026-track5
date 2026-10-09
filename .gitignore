@@ -66,3 +66,7 @@ results/_parts_crops/
 # sharded feature parts and helper sub-shards (hundreds of MB, regenerable)
 artifacts/_feat/
 results/_parts_manual/
+
+# v3 reproducible local caches (only reports, manifests and selected weights ship)
+artifacts/v3/
+results/v3/scores/

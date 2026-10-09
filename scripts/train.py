@@ -137,7 +137,7 @@ def source_groups(n_rows: int, views_per_image: int) -> np.ndarray:
     return np.arange(n_rows) // max(1, views_per_image)
 
 
-def cv_auc(X, y, sid, groups, views_per_image, C, n_splits) -> float:
+def cv_auc(X, y, sid, groups, views_per_image, C, n_splits, tampered_weight=5.0) -> float:
     """Mean GroupKFold AUC. Each fold fits the SAME training-signal head used to ship."""
     n_groups = len(np.unique(groups))
     n_splits = min(n_splits, n_groups)
@@ -146,12 +146,15 @@ def cv_auc(X, y, sid, groups, views_per_image, C, n_splits) -> float:
     gkf = GroupKFold(n_splits=n_splits)
     aucs = []
     for tr, te in gkf.split(X, y, groups):
-        # Refit views_per_image inside the fold: the consistency expansion needs whole
-        # image blocks, and GroupKFold keeps each image's views together, but the fold
-        # rows are not necessarily a clean multiple -> fit per-row (vpi=1) inside CV to
-        # keep it robust; the tampered upweight signal is preserved.
+        # GroupKFold preserves complete source-image blocks. Check that contract rather
+        # than silently disabling the consistency rows used by the final fit.
+        if len(tr) % views_per_image or len(te) % views_per_image:
+            raise ValueError("CV fold split a source-image view block")
+        if not np.all(groups[tr].reshape(-1, views_per_image) == groups[tr][::views_per_image, None]):
+            raise ValueError("CV training rows are not contiguous source-image blocks")
         model = fit_with_training_signal(
-            X[tr], y[tr], sid[tr], views_per_image=1, C=C
+            X[tr], y[tr], sid[tr], views_per_image=views_per_image, C=C,
+            tampered_weight=tampered_weight,
         )
         s = positive_proba(model, X[te])
         if len(np.unique(y[te])) < 2:

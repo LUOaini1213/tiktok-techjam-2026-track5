@@ -23,5 +23,9 @@
     "tensor-diffusion/Dark-Sushi-2.5D",
     "tensor-diffusion/chilloutmix-NI"
   ],
+  "possible_parent_matches": 0,
+  "possible_parent_examples": [],
+  "source_scope_correction": "CF real sources exclude COCO and no protected reference is deliberately sampled. SID uses COCO captions and some COCO-derived edits. The initial frozen manifest wording about no COCO data was broader than the provenance supports. Parent-photo disjointness is not certified.",
+  "parent_check_rule": "Exploratory SID-tampered comparison: pHash <=12 AND dHash <=10; candidates are not proof of a shared parent. Zero candidates would not prove all parents are disjoint.",
   "note": "File/near-duplicate checks are not a proof against all semantic duplicates or unknown encoder-pretraining overlap."
 }

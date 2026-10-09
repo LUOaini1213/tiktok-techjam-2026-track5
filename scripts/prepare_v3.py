@@ -40,7 +40,7 @@ def dhash(image):
 def write_manifest(rows, audit, revisions, complete=False):
     payload = dict(seed=SEED, complete=complete, records=rows, audit=audit, revisions=revisions,
                    license='CommunityForensics-Small: CC-BY-NC-SA-4.0; SID-Set: CC-BY-4.0',
-                   protocol='Frozen before CV. No WildFake/COCO data in train, dev or calibration. VQDiffusion test only.')
+                   protocol='Frozen before CV. No official reference images deliberately sampled for train/dev/cal. CF reals exclude COCO; SID COCO parent ancestry is unverified. VQDiffusion test only.')
     tmp = MANIFEST.with_suffix('.tmp.json')
     tmp.write_text(json.dumps(payload, indent=2), encoding='utf-8')
     tmp.replace(MANIFEST)

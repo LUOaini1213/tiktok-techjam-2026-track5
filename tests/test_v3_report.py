@@ -16,7 +16,7 @@ def test_matched_report_and_figure(tmp_path,monkeypatch):
           for d in report_v3.DOMAINS for m in models for t in conditions]
     with (tmp_path/'evaluation.csv').open('w',newline='',encoding='utf-8') as f:
         writer=csv.DictWriter(f,fieldnames=list(rows[0])); writer.writeheader(); writer.writerows(rows)
-    summary={d:{m:dict(auc=.8,worst_auc=.7,fpr=.01,recall=.4,review_rate=.5) for m in models} for d in report_v3.DOMAINS}
+    summary={d:{m:dict(auc=.8,worst_auc=.7,fpr=.01,recall=.4,review_rate=.5,accuracy_at_0_5=.7,fpr_at_0_5=.2,recall_at_0_5=.6) for m in models} for d in report_v3.DOMAINS}
     (tmp_path/'summary.json').write_text(json.dumps(dict(results=summary)),encoding='utf-8')
     (tmp_path/'selection.json').write_text(json.dumps(dict(selected='baseline',model_sha256='fixture-only')),encoding='utf-8')
     report_v3.main()

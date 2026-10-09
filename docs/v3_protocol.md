@@ -19,8 +19,8 @@ historical diagnostics, not relabelled as a contamination-free final test.
 New data comes from the authors' `OwensLab/CommunityForensics-Small` dataset:
 multiple LatDiff generators, StyleGAN2 and BigGAN for training/development/calibration;
 the whole VQDiffusion generator family is reserved for testing. Real images are
-restricted to FFHQ and LandscapesHQ. All COCO images are excluded from training and
-calibration to protect the official COCO/DALL-E demonstration benchmark. Images and
+restricted to FFHQ and LandscapesHQ. COCO real images are excluded from the added CF
+training/calibration sources to protect the official COCO/DALL-E demonstration benchmark. Images and
 per-generator licenses are not redistributed in this repository. The Small dataset
 is CC-BY-NC-SA-4.0, for non-commercial research; commercial deployment of this v3
 artifact requires a different, appropriately licensed training/calibration dataset.
@@ -36,6 +36,13 @@ Fresh SID test images come from pinned validation shard 10, outside the historic
 prefix. Source revisions, roles, content hashes, and relative paths are frozen before
 cross-validation. Final counts after exclusion are in `results/v3/data_manifest.json`.
 The sealed test is small and non-exhaustive; generator/source content bias can remain.
+The SIDA paper describes FLUX full-synthetic images from Flickr30k/COCO captions,
+and COCO-derived edits (including MagicBrush material). The protected reference is
+never deliberately sampled for training/calibration/selection, but shared parent
+photos cannot be ruled out by bitmap hashes alone. This qualifies the initial
+frozen manifest's overly broad wording about excluding all COCO data; the immutable
+manifest is preserved, with the correction in `protocol_audit.json` and model metadata.
+An exploratory wider perceptual match is diagnostic only, not proof of parent disjointness.
 
 ## Selection and calibration
 
@@ -67,6 +74,8 @@ Low signal does not certify authenticity. The JSON contract stays `{image_path,p
 `pred` remains a continuous score, and operational thresholds are saved in bundle metadata.
 Recall, coverage, review rate and false-clear rate are reported with false-positive rate:
 a detector that flags almost nothing must not be advertised as an unqualified improvement.
+Fixed-0.5 accuracy, FPR and recall are reported separately for both models, so a
+ranking/model improvement is not conflated with simply raising a decision threshold.
 
 The mixed-data candidate and 25%/50%/75% candidate blends are compared to a recalibrated
 v2 head on development images only. An eligible head must have mean external development
@@ -77,6 +86,10 @@ The eligible head with the highest external development mean AUC ships. Otherwis
 v2 head with the new calibration/policy ships and the mixed-data trial stays an experiment.
 `selection.json` freezes the chosen model checksum before sealed-test extraction.
 No promotion or threshold change is allowed in response to sealed-test results.
+The historical SID development guard samples by binary label and can overrepresent
+fully synthetic files because of filename order. It is not a balanced local-edit
+guard. Fresh SID scores are therefore also reported separately for fully synthetic
+and tampered positives; those diagnostic test slices never change the locked head.
 Deployment installation after integrity/contract checks is not another model
 selection step: the development-selected artifact is installed unchanged. A final
 `evaluation_lock.json` checksums every generated report, preventing partial or stale
@@ -134,6 +147,7 @@ manifest and extractor code; incompatible caches are rejected.
 ## References
 
 - [Community Forensics, CVPR 2025](https://openaccess.thecvf.com/content/CVPR2025/html/Park_Community_Forensics_Using_Thousands_of_Generators_to_Train_Fake_Image_CVPR_2025_paper.html)
+- [SIDA / SID-Set source construction](https://arxiv.org/html/2412.04292v2)
 - [Authors' Small dataset and license](https://huggingface.co/datasets/OwensLab/CommunityForensics-Small)
 - [Aligned Datasets Improve Detection, ICLR 2025](https://openreview.net/pdf/e17314703e142b8fea0685c6de8670019e6245d0.pdf)
 - [Real-World Robustness Dataset, ICCV 2025](https://openaccess.thecvf.com/content/ICCV2025/html/Li_Bridging_the_Gap_Between_Ideal_and_Real-world_Evaluation_Benchmarking_AI-Generated_ICCV_2025_paper.html)

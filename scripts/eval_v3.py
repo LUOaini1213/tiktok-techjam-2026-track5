@@ -55,9 +55,11 @@ def main():
     if hashlib.sha256((ROOT/'data/v3/manifest.json').read_bytes()).hexdigest()!=selection['manifest_sha256']:
         raise RuntimeError('Test/data manifest changed after the selection lock')
     d=np.load(ROOT/'artifacts/v3/test.npz')
+    sealed_sid=d['sid']
     subprocess.run([sys.executable,'-u',str(ROOT/'scripts/extract_v3_demo.py')],cwd=ROOT,check=True)
     demo=np.load(ROOT/'artifacts/v3/demo.npz')
     d={k:np.concatenate([d[k],demo[k]]) for k in ('X','y','group','name','domain','path')}
+    d['sid']=np.r_[sealed_sid,demo['y']]
     if not np.isfinite(d['X']).all(): raise ValueError('Non-finite evaluation features')
     bundles={'v2':load_bundle(ROOT/'results/v2/repostguard.joblib'),
              'v3':load_bundle(model_path),
@@ -67,9 +69,13 @@ def main():
         raise ValueError('Non-finite evaluation scores')
     policies={n:b['meta'].get('decision_policy',{'aigc_threshold':.5,'authentic_threshold':np.nextafter(.5,-np.inf)}) for n,b in bundles.items()}
     rows=[]; paired=[]
-    for domain in ['all_sealed',*sorted(set(d['domain']))]:
+    for domain in ['all_sealed',*sorted(set(d['domain'])),'SID-Set fresh (fully synthetic)','SID-Set fresh (tampered)']:
         for name in sorted(set(d['name'])):
-            domain_mask=(d['domain']!='WildFake reference') if domain=='all_sealed' else d['domain']==domain
+            if domain.startswith('SID-Set fresh ('):
+                wanted_sid=2 if domain.endswith('(tampered)') else 1
+                domain_mask=(d['domain']=='SID-Set fresh')&np.isin(d['sid'],[0,wanted_sid])
+            else:
+                domain_mask=(d['domain']!='WildFake reference') if domain=='all_sealed' else d['domain']==domain
             idx=(d['name']==name)&domain_mask
             y=d['y'][idx]
             if len(np.unique(y))<2: continue
@@ -79,10 +85,12 @@ def main():
             for model,s in scores.items():
                 p=s[idx]; lo,hi=(float(v) for v in np.percentile(bootstrap[model],[2.5,97.5]))
                 op=operating_metrics(y,p,policies[model])
+                binary=operating_metrics(y,p,{'aigc_threshold':.5,'authentic_threshold':np.nextafter(.5,-np.inf)})
                 errors=int(((p>=policies[model]['aigc_threshold'])&(y==0)).sum())
                 row=dict(domain=domain,transform=name,model=model,n=len(y),auc=float(roc_auc_score(y,p)),
                          auc_lo=lo,auc_hi=hi,accuracy_at_0_5=float(accuracy_score(y,p>=.5)),
                          brier=float(brier_score_loss(y,p)),**op,
+                         fpr_at_0_5=binary['fpr'],recall_at_0_5=binary['recall'],
                          test_fpr_upper95=binomial_upper(errors,int((y==0).sum())))
                 rows.append(row)
             lo,hi=(float(v) for v in np.percentile(bootstrap['v3']-bootstrap['v2'],[2.5,97.5]))
@@ -93,13 +101,13 @@ def main():
                   'v3',round(roc_auc_score(y,scores['v3'][idx]),4),flush=True)
     write_csv(dest/'evaluation.csv',rows); write_csv(dest/'paired_auc.csv',paired)
     np.savez_compressed(ROOT/'artifacts/v3/test_scores.npz',**{f'score_{n}':s for n,s in scores.items()},
-                        y=d['y'],group=d['group'],name=d['name'],domain=d['domain'],path=d['path'])
+                        y=d['y'],sid=d['sid'],group=d['group'],name=d['name'],domain=d['domain'],path=d['path'])
     summary={}
     for domain in sorted({r['domain'] for r in rows}):
         summary[domain]={}
         for model in bundles:
             rs=[r for r in rows if r['domain']==domain and r['model']==model]
-            summary[domain][model]={k:float(np.mean([r[k] for r in rs])) for k in ('auc','fpr','recall','coverage','review_rate','brier')}
+            summary[domain][model]={k:float(np.mean([r[k] for r in rs])) for k in ('auc','fpr','recall','coverage','review_rate','brier','fpr_at_0_5','recall_at_0_5','accuracy_at_0_5')}
             summary[domain][model]['worst_auc']=min(r['auc'] for r in rs)
     (dest/'summary.json').write_text(json.dumps(dict(selected=selection['selected'],results=summary,
         test_used_for_selection=False,confidence_note='FPR bounds are one-sided 95%; calibration bounds are distribution-specific. Small test groups cannot certify a universal 1% FPR.'),indent=2),encoding='utf-8')

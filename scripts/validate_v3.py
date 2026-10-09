@@ -26,13 +26,19 @@ def main():
     cache=json.loads((ROOT/'artifacts/v3/content_identities.json').read_text(encoding='utf-8'))
     training_paths={r['path'] for r in rows if r['role'] in ('train','cached_train')}
     train=[cache[p]['identity'] for p in training_paths]
+    tampered_paths={r['path'] for r in rows if r['role'] in ('train','cached_train') and r['sid']==2}
+    tampered=[(p,cache[p]['identity']) for p in tampered_paths]
     protected=sorted((ROOT/'data/demo_subset').glob('*.png'))
     if not protected: raise RuntimeError('Protected reference cache is missing')
-    matches=[]
+    matches=[]; parent_candidates=[]
     for p in protected:
         sha,ph,dh=identity(open_image(p))
         if any(sha==h or ((ph^pp).bit_count()<=4 and (dh^dd).bit_count()<=2) for h,pp,dd in train):
             matches.append(p.relative_to(ROOT).as_posix())
+        for source,(_,pp,dd) in tampered:
+            if (ph^pp).bit_count()<=12 and (dh^dd).bit_count()<=10:
+                parent_candidates.append(dict(reference=p.relative_to(ROOT).as_posix(),training=source,
+                                              phash_distance=(ph^pp).bit_count(),dhash_distance=(dh^dd).bit_count()))
     if matches: raise RuntimeError(f'Protected reference near matches to training: {matches[:10]}')
     result=dict(manifest_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
                 counts_by_role=dict(Counter(r['role'] for r in rows)),
@@ -40,6 +46,9 @@ def main():
                 protected_reference_images_checked=len(protected),protected_training_matches=0,
                 identity_rule='Decoded RGB SHA256, or pHash distance <=4 AND dHash distance <=2',
                 new_aigc_training_generators=sorted({r['model'] for r in rows if r['role']=='train' and r['label']==1 and r['model']!='SID'}),
+                possible_parent_matches=len(parent_candidates),possible_parent_examples=parent_candidates[:12],
+                source_scope_correction='CF real sources exclude COCO and no protected reference is deliberately sampled. SID uses COCO captions and some COCO-derived edits. The initial frozen manifest wording about no COCO data was broader than the provenance supports. Parent-photo disjointness is not certified.',
+                parent_check_rule='Exploratory SID-tampered comparison: pHash <=12 AND dHash <=10; candidates are not proof of a shared parent. Zero candidates would not prove all parents are disjoint.',
                 note='File/near-duplicate checks are not a proof against all semantic duplicates or unknown encoder-pretraining overlap.')
     dest=ROOT/'results/v3'; dest.mkdir(parents=True,exist_ok=True)
     (dest/'protocol_audit.json').write_text(json.dumps(result,indent=2),encoding='utf-8')

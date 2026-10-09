@@ -19,7 +19,8 @@ probability for an arbitrary deployment population.
 - **Generator diversity, within local CPU resources.** SID-Set is supplemented by
   multiple LatDiff generators, StyleGAN2 and BigGAN from the authors' Community
   Forensics Small dataset. The whole VQDiffusion family is held out. No COCO or
-  WildFake reference images enter training, calibration or development.
+  WildFake reference images are deliberately sampled for training, calibration or development.
+  SID includes COCO-derived captions/edits, so shared parent photos cannot be ruled out.
 - **Actual repost chains.** Crop → thumbnail → JPEG, noise → JPEG, blur → resize →
   JPEG, and two rounds of sharing. Matching training views use the same parameter
   distributions for both classes; they add no extra inference forwards.
@@ -157,6 +158,9 @@ default; to reproduce a Community Forensics row, first apply the documented fit.
   It does not establish platform-wide or unseen-generator robustness.
 - Uniform RGB geometry and lossless caching do not remove source acquisition,
   original JPEG history, semantic-content bias or unknown encoder-pretraining overlap.
+- SID uses COCO-derived edits and captions. Protected-reference bitmap and
+  near-duplicate checks do not certify parent-photo disjointness; the official
+  reference remains advisory, not a pristine independent generalisation claim.
 - SID tampered/local-edit images remain AIGC-positive; whole-image synthesis and
   local edits are not equally difficult. Tampered weight is selected in grouped CV.
 - Heavy downscaling can destroy useful forensic evidence. There is no guarantee of

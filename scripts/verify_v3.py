@@ -14,7 +14,8 @@ import time
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]; sys.path.insert(0,str(ROOT))
 import numpy as np
-from src.model import load_bundle
+import joblib
+from src.model import load_bundle,save_bundle,predict_proba
 
 
 def sha(path):
@@ -46,12 +47,28 @@ def main():
     for required in ('evaluation.csv','paired_auc.csv','REPORT.md','comparison.png','error_analysis.json','protocol_audit.json'):
         assert (reports/required).stat().st_size>0, f'Missing final deliverable: {required}'
     if args.promote:
-        if sha(shipped) not in (sha(ROOT/'results/v2/repostguard.joblib'),selection['model_sha256']):
-            raise RuntimeError('Shipped weights were changed by another task; refusing to overwrite')
+        # The frozen bundle inherited two documentation fields from v2. Correct
+        # only those fields at packaging; preserve the exact pre-test bytes too.
+        frozen=reports/'frozen_pretest.joblib'
+        if frozen.exists() and sha(frozen)!=selection['model_sha256']:
+            raise RuntimeError('Existing frozen archive was changed; refusing to replace it')
+        shutil.copyfile(candidate,frozen)
+        deployed_meta=dict(meta)
+        deployed_meta['legacy_metadata']={k:meta[k] for k in ('seed','tampered_weight')}
+        deployed_meta.update(seed=31009,tampered_weight=meta['selection']['tampered_weight'],
+                             packaging_note='Inherited documentation fields corrected only; estimator, calibration and inference/decision policy identical to frozen_pretest.joblib')
         temporary=shipped.with_suffix('.v3.tmp.joblib')
-        shutil.copyfile(candidate,temporary); os.replace(temporary,shipped)
-    if sha(shipped)!=selection['model_sha256']:
-        raise RuntimeError('Selected model is not shipped yet; pass --promote after reviewing the locked report')
+        save_bundle(temporary,bundle['model'],deployed_meta)
+        if sha(shipped) not in (sha(ROOT/'results/v2/repostguard.joblib'),selection['model_sha256'],sha(temporary)):
+            raise RuntimeError('Shipped weights were changed by another task; refusing to overwrite')
+        os.replace(temporary,shipped)
+    deployed=load_bundle(shipped)
+    estimator_hash=joblib.hash(bundle['model'],hash_name='sha1')
+    assert joblib.hash(deployed['model'],hash_name='sha1')==estimator_hash, 'Estimator changed after the lock'
+    for key in ('clip_model_id','feature_variant','feature_dim','use_forensic','use_tta',
+                'tta_jpeg_quality','tta_resize_scale','decision_policy','encoder_snapshots'):
+        assert deployed['meta'].get(key)==meta.get(key), f'Inference/policy metadata changed: {key}'
+    np.testing.assert_array_equal(predict_proba(deployed,test['X']),predict_proba(bundle,test['X']))
     env=dict(os.environ,HF_HUB_OFFLINE='1',OMP_NUM_THREADS='2',MKL_NUM_THREADS='2',PYTHONIOENCODING='utf-8')
     with tempfile.TemporaryDirectory(prefix='repostguard-v3-') as temporary:
         folder=Path(temporary); inputs=folder/'images'; inputs.mkdir()
@@ -65,6 +82,7 @@ def main():
                              '--output',str(folder/'preds.json')],cwd=ROOT,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,encoding='utf-8')
         (logs/'contract.log').write_text(proc.stdout,encoding='utf-8')
         assert proc.returncode==0, proc.stdout[-4000:]
+        assert proc.stdout.count('WARNING: failed to score ')==1, 'A valid fixture silently fell back instead of being scored'
         contract_seconds=time.monotonic()-start
         rows=json.loads((folder/'preds.json').read_text(encoding='utf-8'))
         assert len(rows)==3 and all(set(r)=={'image_path','pred'} for r in rows)
@@ -83,7 +101,10 @@ def main():
         label,score,view=app.score_image(im.copy(),100,0,0,1,1,'double_repost')
     assert np.isfinite(score) and 0<=score<=1 and view.mode=='RGB'
     assert 'Thresholds are calibration-specific' in label
-    result=dict(shipped_model_sha256=sha(shipped),selected=selection['selected'],
+    result=dict(shipped_model_sha256=sha(shipped),frozen_pretest_sha256=selection['model_sha256'],
+                unchanged_estimator_sha1=estimator_hash,selected=selection['selected'],
+                metadata_only_corrections=dict(seed=dict(old=meta['seed'],new=deployed['meta']['seed']),
+                    tampered_weight=dict(old=meta['tampered_weight'],new=deployed['meta']['tampered_weight'])),
                 cli_contract=dict(rows=3,bad_image_score=.5,wall_seconds_including_startup=contract_seconds),
                 pytest=re.findall(r'\d+ passed[^\r\n]*',tests.stdout)[-1],
                 ui_callback=dict(scenario='double_repost',score=score,verdict=label),

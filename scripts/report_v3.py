@@ -21,6 +21,7 @@ def main():
     lines=['# v3 matched evaluation','',
            'Post-deadline research, never a competition submission. Model and thresholds were locked before the new test was scored.',
            '',f"Selected on development only: `{selected['selected']}`. Model SHA256: `{selected['model_sha256']}`.",
+           '', 'The exact [pre-test artifact](frozen_pretest.joblib) is archived. Packaging only corrects inherited documentation fields; [preflight](preflight.json) verifies identical estimator, inference policy and sealed predictions, and records both artifact checksums.',
            '', '## Domain summaries','',
            'Means below are descriptive averages over conditions, not independent trials. v2/v3 use exactly the same originals within each row. Domains have different transform counts. Community Forensics inputs are uniformly fit to 512x512 before transforms; those scores do not describe native source files.',
            '', '| Domain | Originals/condition | Model | Mean AUC | Worst AUC | FPR | Recall | Review rate |',

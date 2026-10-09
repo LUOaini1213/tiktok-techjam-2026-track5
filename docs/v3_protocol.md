@@ -94,6 +94,13 @@ Deployment installation after integrity/contract checks is not another model
 selection step: the development-selected artifact is installed unchanged. A final
 `evaluation_lock.json` checksums every generated report, preventing partial or stale
 reports from being treated as a completed evaluation.
+The pre-test bundle inherited top-level `seed=2026` and `tampered_weight=5` fields
+from v2, although the actual v3 recipe uses seed 31009 and weight 1 (recorded under
+`selection`). Packaging corrects these documentation fields only. The exact locked
+bytes are preserved as `results/v3/frozen_pretest.joblib`; deployment verification
+requires an identical fitted-estimator hash, identical inference/calibration/policy
+metadata, and bit-identical predictions on every sealed feature. Both artifact
+checksums and the metadata-only corrections are recorded in `preflight.json`.
 
 ## Evaluation
 

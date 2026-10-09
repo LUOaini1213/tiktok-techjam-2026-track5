@@ -46,7 +46,7 @@ The v3 local CPU workflow is in progress. No new scores are claimed before it fi
 The mixed-data candidate uses 12,765 unique training originals; the new protocol has 1,004 calibration originals,
 192 external development originals plus a filtered historical SID development slice,
 and 448 newly sealed test originals (256 SID + 192 Community Forensics).
-An independently sampled 400-image COCO/DALL·E reference slice is evaluated after the
+A fixed-seed 400-image COCO/DALL·E reference slice is evaluated after the
 model is locked and is not part of the sealed aggregate. It is a demonstration
 benchmark, not a competition score. Complete methodology: [v3 protocol](docs/v3_protocol.md).
 

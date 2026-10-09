@@ -123,6 +123,14 @@ def main():
     # Source ids/hashes and relative paths are sufficient; dataset images stay local.
     (dest/'data_manifest.json').write_text(json.dumps(public,indent=2),encoding='utf-8')
     subprocess.run([sys.executable,str(ROOT/'scripts/report_v3.py')],cwd=ROOT,check=True)
+    # Publish a completion marker only after every required report is written.
+    evidence=('evaluation.csv','paired_auc.csv','summary.json','error_analysis.json',
+              'data_manifest.json','REPORT.md','comparison.png','demo_protocol.json')
+    lock=dict(model_sha256=selection['model_sha256'],manifest_sha256=selection['manifest_sha256'],
+              report_sha256={name:hashlib.sha256((dest/name).read_bytes()).hexdigest() for name in evidence},
+              test_used_for_selection=False)
+    temporary=dest/'evaluation_lock.tmp.json'
+    temporary.write_text(json.dumps(lock,indent=2),encoding='utf-8'); temporary.replace(dest/'evaluation_lock.json')
     print(json.dumps(summary,indent=2),flush=True)
 
 

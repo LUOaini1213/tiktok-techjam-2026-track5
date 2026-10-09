@@ -14,7 +14,7 @@ probability for an arbitrary deployment population.
 
 - **Corrected data accounting.** The old 16,000-file training cache contained only
   11,997 unique files; 19 files overlapped training and validation. The downloader
-  now deduplicates resumed streams. v3 fits on unique originals and excludes
+  now deduplicates resumed streams. The v3 candidate fits on unique originals and excludes
   decoded-pixel/near matches across training and evaluation.
 - **Generator diversity, within local CPU resources.** SID-Set is supplemented by
   multiple LatDiff generators, StyleGAN2 and BigGAN from the authors' Community
@@ -42,7 +42,7 @@ Dataset images are not redistributed.
 The v3 local CPU workflow is in progress. No new scores are claimed before it finishes.
 <!-- /V3_RESULTS -->
 
-The new protocol uses 12,765 unique training originals, 1,004 calibration originals,
+The mixed-data candidate uses 12,765 unique training originals; the new protocol has 1,004 calibration originals,
 192 external development originals plus a filtered historical SID development slice,
 and 448 newly sealed test originals (256 SID + 192 Community Forensics).
 An independently sampled 400-image COCO/DALL·E reference slice is evaluated after the
@@ -123,6 +123,7 @@ python scripts/train_v3.py
 python scripts/extract_v3.py --roles test
 python scripts/eval_v3.py
 python scripts/validate_v3.py
+python -m pip install pytest
 python -m pytest tests/ -q
 python infer.py --input_dir samples --output preds.json
 ```
@@ -132,6 +133,10 @@ console window. It logs to `logs/v3/` and checkpoints individual feature rows.
 It never pushes Git or automatically changes the shipped artifact.
 `precache_v3.py` is an optional bounded helper using the same view recipe and cache
 fingerprint. The test helper refuses to run before model/manifest locking.
+After reviewing the completed report, `python scripts/verify_v3.py --promote`
+checks the evidence checksums, installs the already-selected head, runs the full
+test suite and exercises the real CLI and UI. It refuses to overwrite a shipped
+artifact changed by another task. It does not select a new model from test results.
 
 Evaluation measures all 15 official clean/single-transform conditions and four
 ordered chains on the new test originals. AUC confidence intervals and paired

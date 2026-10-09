@@ -77,6 +77,10 @@ The eligible head with the highest external development mean AUC ships. Otherwis
 v2 head with the new calibration/policy ships and the mixed-data trial stays an experiment.
 `selection.json` freezes the chosen model checksum before sealed-test extraction.
 No promotion or threshold change is allowed in response to sealed-test results.
+Deployment installation after integrity/contract checks is not another model
+selection step: the development-selected artifact is installed unchanged. A final
+`evaluation_lock.json` checksums every generated report, preventing partial or stale
+reports from being treated as a completed evaluation.
 
 ## Evaluation
 

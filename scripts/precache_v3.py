@@ -25,7 +25,10 @@ from src.score import embed_for_score
 
 def main():
     p=argparse.ArgumentParser(); p.add_argument('--role',choices=['train','cal','dev','test'],required=True)
-    p.add_argument('--tail',type=int,default=600); p.add_argument('--threads',type=int,default=4)
+    interval=p.add_mutually_exclusive_group()
+    interval.add_argument('--tail',type=int,default=600)
+    interval.add_argument('--head',type=int,default=None)
+    p.add_argument('--threads',type=int,default=4)
     args=p.parse_args(); torch.set_num_threads(args.threads); cfg=load_config()
     manifest_path=ROOT/'data/v3/manifest.json'; m=json.loads(manifest_path.read_text(encoding='utf-8'))
     assert m['complete'] and m['audit']['content_audit_complete']
@@ -34,7 +37,9 @@ def main():
         assert hashlib.sha256((ROOT/'artifacts/repostguard_v3.joblib').read_bytes()).hexdigest()==selection['model_sha256']
         assert hashlib.sha256(manifest_path.read_bytes()).hexdigest()==selection['manifest_sha256']
     fp=hashlib.sha256(manifest_path.read_bytes()+b''.join((ROOT/f).read_bytes() for f in ('src/features.py','src/repost.py','src/augment.py','scripts/extract_v3.py'))).hexdigest()
-    records=[r for r in m['records'] if r['role']==args.role][-args.tail:][::-1]
+    records=[r for r in m['records'] if r['role']==args.role]
+    if args.tail<1 or (args.head is not None and args.head<1): raise ValueError('Cache interval must be positive')
+    records=(records[:args.head] if args.head is not None else records[-args.tail:])[::-1]
     start=time.monotonic()
     for i,r in enumerate(records):
         target=ROOT/'artifacts/v3/images'/f'{args.role}_{r["group"]}.npz'

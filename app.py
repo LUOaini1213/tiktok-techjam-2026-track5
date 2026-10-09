@@ -70,8 +70,12 @@ def score_image(
         pred = score_from_embed(BUNDLE, feat)
     except ValueError:
         return "Needs review (invalid model score; no authenticity claim)", 0.5, work
-    label = verdict(pred, META.get("decision_policy"))
-    return f"{label}  (AIGC score = {pred:.3f}; uncertainty may require review)", pred, work
+    policy = META.get("decision_policy")
+    label = verdict(pred, policy)
+    detail = (f"AI flag ≥ {policy['aigc_threshold']:.3f}; low signal ≤ {policy['authentic_threshold']:.3f}. "
+              if policy else "Legacy binary policy. ")
+    return (f"{label}  (AIGC score = {pred:.3f})\n{detail}"
+            "Thresholds are calibration-specific. Low signal is not proof of authenticity."), pred, work
 
 
 def main() -> None:

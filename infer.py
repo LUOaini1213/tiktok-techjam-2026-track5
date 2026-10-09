@@ -73,7 +73,13 @@ def score_directory(
     # handler) if the weights were trained on a different feature width than the
     # current pipeline produces for this variant -- otherwise every image would
     # silently score the fallback 0.5.
-    expected_dim = feature_dim_for_variant(variant, use_forensic)
+    if variant in ('v4_local','v4_global'):
+        from src.features_v4 import V4_DIM
+        if not use_forensic:
+            raise SystemExit('V4 local weights require forensic features')
+        expected_dim = V4_DIM if variant=='v4_local' else 924
+    else:
+        expected_dim = feature_dim_for_variant(variant, use_forensic)
     trained_dim = meta.get("feature_dim")
     if trained_dim is not None and int(trained_dim) != expected_dim:
         raise SystemExit(

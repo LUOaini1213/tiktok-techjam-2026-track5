@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import argparse
 from pathlib import Path
 
 import gradio as gr
@@ -25,11 +26,11 @@ BUNDLE = None
 META = {}
 
 
-def load_weights():
+def load_weights(weights: Path | None = None):
     global BUNDLE, META
     if not torch.cuda.is_available():
         torch.set_num_threads(int(cfg.get('cpu_threads', 4)))
-    BUNDLE = load_bundle(model_path(cfg))
+    BUNDLE = load_bundle(weights or model_path(cfg))
     META = BUNDLE.get("meta", {})
 
 
@@ -74,13 +75,18 @@ def score_image(
     label = verdict(pred, policy)
     detail = (f"AI flag ≥ {policy['aigc_threshold']:.3f}; low signal ≤ {policy['authentic_threshold']:.3f}. "
               if policy else "Legacy binary policy. ")
+    scope = (" V4 policy was calibrated on clean and crop-resize-JPEG only; other edits are stress tests."
+             if META.get('version') == 'v4' else "")
     return (f"{label}  (AIGC score = {pred:.3f})\n{detail}"
-            "Thresholds are calibration-specific. Low signal is not proof of authenticity."), pred, work
+            "Thresholds are calibration-specific. Low signal is not proof of authenticity." + scope), pred, work
 
 
-def build_demo() -> gr.Interface:
+def build_demo(weights: Path | None = None) -> gr.Interface:
     try:
-        load_weights()
+        if weights is None:
+            load_weights()
+        else:
+            load_weights(weights)
         status = "Weights loaded."
     except FileNotFoundError as e:
         status = str(e)
@@ -113,7 +119,10 @@ def build_demo() -> gr.Interface:
 
 
 def main() -> None:
-    build_demo().launch()
+    parser = argparse.ArgumentParser(description='RepostGuard local research demo')
+    parser.add_argument('--weights',type=Path,default=None,help='Optional explicitly selected research head; default remains V3')
+    args = parser.parse_args()
+    build_demo(args.weights).launch()
 
 
 if __name__ == "__main__":

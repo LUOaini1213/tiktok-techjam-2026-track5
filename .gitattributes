@@ -7,3 +7,18 @@
 /scripts/extract_v3.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 /scripts/extract_v3_demo.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 /scripts/train_v3.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+
+# V4 independent lock: preserve exact source/manifest/report bytes on every OS.
+/results/v4/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/docs/v4_protocol.md -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/src/features_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/src/model_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/src/decision_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/src/model.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/src/score.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/train.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/train_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/extract_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/prepare_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/v4_common.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/validate_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

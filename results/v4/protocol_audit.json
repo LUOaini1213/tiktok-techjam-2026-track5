@@ -1,0 +1,13 @@
+{
+  "manifest_sha256": "3ef545888fb38d03d659576edc69399ad3203e061985a191c3447d5c6a320c98",
+  "decoded_sources_checked": 2560,
+  "stored_pixel_identity_mismatches": 0,
+  "protected_identity_inventory": 16409,
+  "excluded_exact_or_near": {
+    "exact_or_near_old_protected_or_new": 7
+  },
+  "all_new_groups_and_roles_disjoint": true,
+  "heldout_generator": "StyleGANXL",
+  "official_reference_used_for_training": false,
+  "parent_overlap_certified": false
+}

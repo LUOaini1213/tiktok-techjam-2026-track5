@@ -25,6 +25,18 @@ def embed_for_score(
 
     `crops=N` adds N corner/centre crops to the averaged view set (eval-time multi-crop).
     """
+    if variant in ('v4_local','v4_global'):
+        if not use_forensic or crops:
+            raise ValueError('V4 local descriptor requires forensic features and crops=0')
+        from .features_v4 import embed_v4, center_forensic
+        if variant == 'v4_local':
+            return embed_v4(image, model_id=model_id, use_tta=use_tta,
+                            tta_jpeg_quality=tta_jpeg_quality, tta_resize_scale=tta_resize_scale)
+        from .features import _tta_clip_means, dino_embed_batch
+        clip=_tta_clip_means(image,model_id,use_tta,tta_jpeg_quality,tta_resize_scale)['proj']
+        dino=dino_embed_batch([image])[0]
+        dino=dino/(np.linalg.norm(dino)+1e-8)
+        return np.concatenate([clip,dino,center_forensic(image)]).astype(np.float32)
     return embed_one(
         image,
         model_id=model_id,

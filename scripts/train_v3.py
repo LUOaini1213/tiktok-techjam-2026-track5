@@ -5,6 +5,9 @@ import hashlib
 import json
 import sys
 import time
+import platform
+from importlib.metadata import version
+from huggingface_hub import try_to_load_from_cache
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
@@ -13,9 +16,12 @@ from sklearn.metrics import roc_auc_score, brier_score_loss
 from sklearn.model_selection import GroupKFold, train_test_split
 from threadpoolctl import threadpool_limits
 from src.decision import select_policy, operating_metrics
-from src.model import load_bundle, save_bundle, predict_proba
+from src.model import load_bundle, save_bundle, predict_proba, ProbabilityBlend
 from src.train_signal import fit_with_training_signal
 from scripts.train import calibrate
+from scripts.audit_v3 import identity
+from src.data import records_from_folders
+from src.io_utils import open_image
 
 BASE=ROOT/'artifacts/v3'
 REPORT=ROOT/'results/v3'
@@ -72,9 +78,11 @@ def main():
     X=legacy['X_fuse'][raw_idx].astype(np.float32)
     y=legacy['y'][raw_idx]; sid=legacy['sid'][raw_idx]
     groups=np.repeat([r['group'] for r in cached],vpi)
+    assert np.array_equal(y, np.repeat([r['label'] for r in cached], vpi)), 'Legacy cache ordering/labels disagree with the manifest'
     del legacy; gc.collect()
     extra=np.load(BASE/'train.npz')
     X=np.concatenate([X,extra['X']]); y=np.r_[y,extra['y']]; sid=np.r_[sid,extra['sid']]; groups=np.r_[groups,extra['group']]
+    if not np.isfinite(X).all(): raise ValueError('Non-finite training features')
     assert not set(groups)&{r['group'] for r in manifest['records'] if r['role'] in ('cal','dev','test')}
     # Fixed selection budget, stratified on original image identity; all augmented
     # rows for a selected image are retained. No dev, cal or test labels enter CV.
@@ -102,6 +110,10 @@ def main():
     del X,cx,extra; gc.collect()
     base_bundle=load_bundle(ROOT/'results/v2/repostguard.joblib')
     cal=np.load(BASE/'cal.npz'); uy,first=np.unique(cal['group'],return_index=True)
+    if not np.isfinite(cal['X']).all(): raise ValueError('Non-finite calibration features')
+    runtime=dict(python=platform.python_version(), **{p:version(p) for p in ('numpy','scipy','scikit-learn','torch','transformers','Pillow','joblib')})
+    encoder_snapshots={mid:Path(try_to_load_from_cache(mid,'config.json')).parent.name
+                       for mid in ('openai/clip-vit-base-patch32','facebook/dinov2-small')}
     fit_groups,policy_groups=train_test_split(uy,test_size=.5,random_state=31009,stratify=cal['y'][first])
     fit_idx=np.isin(cal['group'],fit_groups); policy_idx=np.isin(cal['group'],policy_groups)
     assert not set(fit_groups)&set(policy_groups)
@@ -111,6 +123,7 @@ def main():
         s=calibrated.predict_proba(cal['X'][policy_idx])[:,1]
         policy=select_policy(cal['y'][policy_idx],s,cal['group'][policy_idx])
         meta=dict(base_bundle['meta'])
+        meta['v2_reference_metrics']=meta.pop('metrics',{})
         meta.update(version='v3',calibration='sigmoid, probability-fit groups disjoint from threshold-policy groups',
                     decision_policy=policy,tta_jpeg_quality=70,tta_resize_scale=.5,
                     manifest_sha256=hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
@@ -118,22 +131,61 @@ def main():
                     v3_head=name,selection=winner if name=='candidate' else 'v2 head; recalibrated',
                     n_train_unique=int(len(unique)) if name=='candidate' else 11997,
                     calibration_fit_groups=len(fit_groups),calibration_policy_groups=len(policy_groups),
+                    runtime=runtime,
+                    encoder_snapshots=encoder_snapshots,
+                    encoder_parameters=dict(clip_loaded=151277313,clip_active_vision=87849216,dinov2=22056576),
                     dataset_license='CommunityForensics-Small CC-BY-NC-SA-4.0, non-commercial research; SID-Set CC-BY-4.0')
         bundles[name]=dict(model=calibrated,meta=meta)
         save_bundle(ROOT/f'artifacts/repostguard_v3_{name}.joblib',calibrated,meta)
     dev=np.load(BASE/'dev.npz')
+    if not np.isfinite(dev['X']).all(): raise ValueError('Non-finite development features')
+    # Old v2 test images have already informed earlier iterations. Treat a filtered
+    # subset explicitly as DEVELOPMENT, never as the newly sealed v3 final test.
+    old_test=set(json.loads((ROOT/'artifacts/test_images.json').read_text(encoding='utf-8')))
+    all_val=[r for r in records_from_folders(ROOT/'data/sid_subset') if r['split']=='val']
+    blocked={r['group'] for r in manifest['records'] if r['role'] in ('train','cached_train','cal')}
+    idx=[]; counts={0:0,1:0}
+    for i,r in enumerate(all_val):
+        if r['path'] not in old_test or counts[r['label']]>=100: continue
+        h,_,_=identity(open_image(Path(r['path'])))
+        if h in blocked: continue
+        idx.append(i); counts[r['label']]+=1
+    old_val=np.load(ROOT/'artifacts/features_val.npz')
+    sid_X=old_val['X_fuse'][idx]; sid_y=old_val['y'][idx]
+    # Small blends can retain SID performance while adding cross-source evidence.
+    # Their coefficients and eligibility rules are fixed here before test extraction.
+    for alpha in (.25,.5,.75):
+        name=f'blend_{alpha}'
+        blended=ProbabilityBlend(bundles['baseline']['model'],bundles['candidate']['model'],alpha)
+        meta=dict(bundles['candidate']['meta'])
+        meta.update(v3_head=name,blend_alpha=alpha)
+        meta['decision_policy']=select_policy(cal['y'][policy_idx],blended.predict_proba(cal['X'][policy_idx])[:,1],cal['group'][policy_idx])
+        bundles[name]=dict(model=blended,meta=meta)
     dev_scores={name:predict_proba(b,dev['X']) for name,b in bundles.items()}
     aucs={name:by_transform(dev,s) for name,s in dev_scores.items()}
-    promote,selection=select_on_dev(aucs['baseline'],aucs['candidate'])
-    selected_name='candidate' if promote else 'baseline'
+    sid_dev_auc={name:_auc(sid_y,predict_proba(b,sid_X)) for name,b in bundles.items()}
+    eligible=['baseline']; selections={}
+    for name in bundles:
+        if name=='baseline': continue
+        ok,detail=select_on_dev(aucs['baseline'],aucs[name])
+        detail['sid_clean_guard_met']=sid_dev_auc[name]>=sid_dev_auc['baseline']-.005
+        selections[name]=detail
+        if ok and detail['sid_clean_guard_met']: eligible.append(name)
+    selected_name=max(eligible,key=lambda n:float(np.mean(list(aucs[n].values()))))
+    selection=dict(rule='Maximize external dev mean AUC subject to clean/thumbnail gates and SID dev clean loss <=.005',
+                   eligible=eligible,comparisons=selections)
     chosen=bundles[selected_name]
+    chosen['meta']['metrics']=dict(cv_selection=winner,external_development_auc=aucs[selected_name],
+                                   sid_development_auc=sid_dev_auc[selected_name],sealed_test_used=False)
     save_bundle(ROOT/'artifacts/repostguard_v3.joblib',chosen['model'],chosen['meta'])
     report=dict(selected=selected_name,dev_selection=selection,dev_auc=aucs,trials=trials,
+                sid_development_auc=sid_dev_auc,n_sid_development=len(idx),
                 calibration_policy={n:b['meta']['decision_policy'] for n,b in bundles.items()},
                 dev_operating={n:operating_metrics(dev['y'],dev_scores[n],b['meta']['decision_policy']) for n,b in bundles.items()},
                 manifest_audit=manifest['audit'],test_used_for_selection=False,
                 model_sha256=hashlib.sha256((ROOT/'artifacts/repostguard_v3.joblib').read_bytes()).hexdigest(),
                 manifest_sha256=chosen['meta']['manifest_sha256'],
+                runtime=runtime,
                 test_protocol='All 15 official conditions + 4 ordered chains; original-image paired bootstrap; no test-driven promotion')
     (REPORT/'selection.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     print(json.dumps({k:v for k,v in report.items() if k!='trials'},indent=2),flush=True)

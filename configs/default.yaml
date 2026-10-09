@@ -3,6 +3,7 @@ clip_model_id: openai/clip-vit-base-patch32
 train_per_class: 8000
 val_per_class: 1000
 batch_size: 8
+cpu_threads: 4
 image_size: 224
 use_forensic: true
 use_tta: true

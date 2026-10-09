@@ -6,6 +6,12 @@ from PIL import Image
 from src.decision import select_policy, verdict, operating_metrics
 from src.repost import train_views, apply_chain
 from scripts.train import cv_auc
+from scripts.train_v3 import grouped_consistency
+from src.model import ProbabilityBlend
+from sklearn.dummy import DummyClassifier
+import joblib
+from infer import prediction_row
+from src.score import score_from_embed
 
 
 def test_policy_counts_originals_not_augmented_rows():
@@ -53,3 +59,28 @@ def test_chains_and_training_views_are_reproducible():
         assert name == name2 and av.size == image.size
         np.testing.assert_array_equal(av, bv)
     assert not np.array_equal(image, apply_chain(image, 'double_repost'))
+
+
+def test_variable_view_consistency_stays_with_original_and_rejects_label_conflicts():
+    X=np.array([[0.],[2.],[10.],[14.],[18.]])
+    y=np.array([0,0,1,1,1]); groups=np.array(['a','a','b','b','b'])
+    xx,yy,ss,gg=grouped_consistency(X,y,y,groups)
+    np.testing.assert_array_equal(xx[-3:,0],[1,12,14])
+    np.testing.assert_array_equal(gg[-3:],['a','b','b'])
+    with pytest.raises(ValueError):
+        grouped_consistency(X,np.array([0,1,1,1,1]),y,groups)
+
+
+def test_blended_head_is_portable_and_preserves_probability_contract(tmp_path):
+    X=np.zeros((2,3)); y=np.array([0,1])
+    a=DummyClassifier(strategy='constant',constant=0).fit(X,y)
+    b=DummyClassifier(strategy='constant',constant=1).fit(X,y)
+    blend=ProbabilityBlend(a,b,.25)
+    path=tmp_path/'blend.joblib'; joblib.dump(blend,path)
+    np.testing.assert_allclose(joblib.load(path).predict_proba(X),[[.75,.25],[.75,.25]])
+
+
+def test_nonfinite_values_cannot_silently_become_confident_authentic_scores():
+    assert prediction_row('bad.jpg',float('nan'))['pred']==.5
+    with pytest.raises(ValueError,match='Non-finite'):
+        score_from_embed({},np.array([np.nan,1.]))

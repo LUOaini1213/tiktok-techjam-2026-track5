@@ -57,5 +57,9 @@ def embed_for_score_dual(
 
 
 def score_from_embed(bundle: dict[str, Any], feat: np.ndarray) -> float:
+    if not np.isfinite(feat).all():
+        raise ValueError("Non-finite image features")
     pred = float(predict_proba(bundle, feat.reshape(1, -1))[0])
+    if not np.isfinite(pred):
+        raise ValueError("Non-finite model score")
     return min(1.0, max(0.0, pred))

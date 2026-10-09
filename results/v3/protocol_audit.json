@@ -1,0 +1,27 @@
+{
+  "manifest_sha256": "23f8699e7d6f19472b219616cc72fcde2f98c40d5455c760f758540cdc9e6b82",
+  "counts_by_role": {
+    "cached_train": 11997,
+    "train": 960,
+    "cal": 1004,
+    "dev": 192,
+    "test": 448
+  },
+  "unique_training_originals": 12765,
+  "protected_reference_images_checked": 2000,
+  "protected_training_matches": 0,
+  "identity_rule": "Decoded RGB SHA256, or pHash distance <=4 AND dHash distance <=2",
+  "new_aigc_training_generators": [
+    "AACEE/textual_inversion_cat",
+    "BigGAN",
+    "LieDeath/MergeStove2.5D",
+    "StyleGAN2",
+    "alea31415/onimai-characters",
+    "danbochman/ccxl",
+    "lewdryuna/A-Rainier",
+    "tensor-diffusion/AsianRealistic_SDLife_ChiasedammeV9.0",
+    "tensor-diffusion/Dark-Sushi-2.5D",
+    "tensor-diffusion/chilloutmix-NI"
+  ],
+  "note": "File/near-duplicate checks are not a proof against all semantic duplicates or unknown encoder-pretraining overlap."
+}

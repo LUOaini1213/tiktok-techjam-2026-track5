@@ -4,6 +4,7 @@ import csv
 import hashlib
 import json
 import sys
+import subprocess
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
@@ -36,16 +37,24 @@ def main():
     if hashlib.sha256((ROOT/'data/v3/manifest.json').read_bytes()).hexdigest()!=selection['manifest_sha256']:
         raise RuntimeError('Test/data manifest changed after the selection lock')
     d=np.load(ROOT/'artifacts/v3/test.npz')
+    subprocess.run([sys.executable,'-u',str(ROOT/'scripts/extract_v3_demo.py')],cwd=ROOT,check=True)
+    demo=np.load(ROOT/'artifacts/v3/demo.npz')
+    d={k:np.concatenate([d[k],demo[k]]) for k in ('X','y','group','name','domain','path')}
+    if not np.isfinite(d['X']).all(): raise ValueError('Non-finite evaluation features')
     bundles={'v2':load_bundle(ROOT/'results/v2/repostguard.joblib'),
              'v3':load_bundle(model_path),
              'v3_candidate':load_bundle(ROOT/'artifacts/repostguard_v3_candidate.joblib')}
     scores={n:predict_proba(b,d['X']) for n,b in bundles.items()}
+    if any(not np.isfinite(s).all() for s in scores.values()):
+        raise ValueError('Non-finite evaluation scores')
     policies={n:b['meta'].get('decision_policy',{'aigc_threshold':.5,'authentic_threshold':np.nextafter(.5,-np.inf)}) for n,b in bundles.items()}
     rows=[]; paired=[]
-    for domain in ['all',*sorted(set(d['domain']))]:
+    for domain in ['all_sealed',*sorted(set(d['domain']))]:
         for name in sorted(set(d['name'])):
-            idx=(d['name']==name)&((d['domain']==domain) if domain!='all' else True)
+            domain_mask=(d['domain']!='WildFake reference') if domain=='all_sealed' else d['domain']==domain
+            idx=(d['name']==name)&domain_mask
             y=d['y'][idx]
+            if len(np.unique(y))<2: continue
             for model,s in scores.items():
                 p=s[idx]; lo,hi=stratified_bootstrap_auc_ci(y,p,reps=1000,seed=31009)
                 op=operating_metrics(y,p,policies[model])
@@ -76,7 +85,8 @@ def main():
     errors=[]
     high=policies['v3']['aigc_threshold']; low=policies['v3']['authentic_threshold']
     for kind,mask in [('false_positive',(d['y']==0)&(scores['v3']>=high)),
-                      ('false_clear',(d['y']==1)&(scores['v3']<=low))]:
+                      ('false_clear',(d['y']==1)&(scores['v3']<=low)),
+                      ('false_negative_at_0_5',(d['y']==1)&(scores['v3']<.5))]:
         indices=np.flatnonzero(mask)
         # One representative per original image, rather than 19 repeated cases.
         seen=set()
@@ -91,6 +101,7 @@ def main():
     public=dict(manifest)
     # Source ids/hashes and relative paths are sufficient; dataset images stay local.
     (dest/'data_manifest.json').write_text(json.dumps(public,indent=2),encoding='utf-8')
+    subprocess.run([sys.executable,str(ROOT/'scripts/report_v3.py')],cwd=ROOT,check=True)
     print(json.dumps(summary,indent=2),flush=True)
 
 

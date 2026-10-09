@@ -8,6 +8,20 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.base import BaseEstimator, ClassifierMixin
+
+
+class ProbabilityBlend(ClassifierMixin, BaseEstimator):
+    """A persisted convex blend of fitted heads; mixing is chosen on development only."""
+    def __init__(self, baseline, candidate, alpha=0.5):
+        self.baseline = baseline
+        self.candidate = candidate
+        self.alpha = alpha
+        self.classes_ = np.array([0, 1])
+        self.n_features_in_ = baseline.n_features_in_
+
+    def predict_proba(self, X):
+        return (1 - self.alpha) * self.baseline.predict_proba(X) + self.alpha * self.candidate.predict_proba(X)
 
 
 def build_classifier(C: float = 1.0) -> Pipeline:

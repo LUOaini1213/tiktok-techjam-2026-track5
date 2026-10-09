@@ -24,6 +24,13 @@ calibration to protect the official COCO/DALL-E demonstration benchmark. Images 
 per-generator licenses are not redistributed in this repository. The Small dataset
 is CC-BY-NC-SA-4.0, for non-commercial research; commercial deployment of this v3
 artifact requires a different, appropriately licensed training/calibration dataset.
+Dataset attribution: Jeongsoo Park and Andrew Owens, *Community Forensics*,
+CVPR 2025. [Source card](https://huggingface.co/datasets/OwensLab/CommunityForensics-Small),
+[paper](https://arxiv.org/abs/2411.04125),
+[CC-BY-NC-SA-4.0 terms](https://creativecommons.org/licenses/by-nc-sa/4.0/).
+Our changes are subset selection, source-role partitioning, uniform CF geometry,
+repost transformations and head fitting; no ownership of source images is claimed.
+The card also points to per-generator terms, which remain relevant.
 
 Fresh SID test images come from pinned validation shard 10, outside the historical
 prefix. Source revisions, roles, content hashes, and relative paths are frozen before
@@ -43,6 +50,10 @@ resize interpolation methods, and ordered multi-stage chains. Both classes use t
 parameter distribution. Community Forensics images are decoded RGB, uniformly fit to
 512x512, and losslessly cached; source compression history can still remain. This is
 an alignment control, not proof that acquisition bias is eliminated.
+The Community Forensics numbers apply to these aligned 512x512 inputs, not the
+native source files. CLI/UI inference does not silently apply a dataset-specific
+fit to arbitrary uploads. A live reproduction must feed the same aligned view;
+SID and the official reference retain their native input geometry.
 
 Calibration originals are split into two disjoint, label-stratified halves. One half
 fits the sigmoid; the other selects decision thresholds using each original's worst
@@ -57,10 +68,13 @@ Low signal does not certify authenticity. The JSON contract stays `{image_path,p
 Recall, coverage, review rate and false-clear rate are reported with false-positive rate:
 a detector that flags almost nothing must not be advertised as an unqualified improvement.
 
-The mixed-data candidate is compared to a recalibrated v2 head on development images
-only. It ships only if mean development AUC is at least v2's, clean AUC loses no more
-than 0.01, and thumbnail AUC loses no more than 0.005. Otherwise the v2 head with the
-new calibration/policy ships and the mixed-data trial remains a reported experiment.
+The mixed-data candidate and 25%/50%/75% candidate blends are compared to a recalibrated
+v2 head on development images only. An eligible head must have mean external development
+AUC at least v2's, external clean loss no more than 0.01, thumbnail loss no more than
+0.005, and SID development clean loss no more than 0.005. The latter uses historical
+v2 evaluation images, explicitly reclassified as development, not as a new final test.
+The eligible head with the highest external development mean AUC ships. Otherwise the
+v2 head with the new calibration/policy ships and the mixed-data trial stays an experiment.
 `selection.json` freezes the chosen model checksum before sealed-test extraction.
 No promotion or threshold change is allowed in response to sealed-test results.
 
@@ -78,6 +92,17 @@ FPR confidence bounds remain visible. A small test with zero false positives can
 establish a universal 1% deployment FPR. WildFake is evaluation-only and is never a
 source of training, calibration or threshold-selection labels.
 
+An additional 400-image official reference subset (200 real / 200 AIGC, seed 31009)
+is scored on six selected conditions only after the lock. Both models use the same
+400 originals. These results must not be directly compared with the old 2,000-image
+reference table or included in the 448-image sealed-test aggregate. A separate
+protected-reference audit checks all 2,000 cached reference images against training
+identities; see `results/v3/protocol_audit.json`.
+
+Model metadata records encoder checkpoint snapshots, exact parameter counts and
+library versions. CPU inference defaults to four threads (configurable), matching
+the local feature-cache run. No unmeasured GPU throughput claim is made.
+
 ## Reproduce on the v2 workspace
 
 The existing SID dataset and `artifacts/features_train.npz` are local licensed caches,
@@ -91,6 +116,7 @@ python scripts/extract_v3.py --roles train,cal,dev
 python scripts/train_v3.py
 python scripts/extract_v3.py --roles test
 python scripts/eval_v3.py
+python scripts/validate_v3.py
 python -m pytest tests/ -q
 ```
 

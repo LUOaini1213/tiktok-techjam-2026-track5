@@ -6,7 +6,8 @@ import sys
 from pathlib import Path
 
 import gradio as gr
-from PIL import Image
+import torch
+from PIL import Image, ImageOps
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
@@ -14,9 +15,10 @@ sys.path.insert(0, str(ROOT))
 from src.augment import center_crop, gaussian_blur, gaussian_noise, jpeg_compress
 from src.config import load_config, model_path
 from src.decision import verdict
-from src.features import DEFAULT_FEATURE_VARIANT, embed_one
-from src.model import load_bundle, predict_proba
+from src.features import DEFAULT_FEATURE_VARIANT
+from src.model import load_bundle
 from src.repost import CHAINS, apply_chain, rescale
+from src.score import embed_for_score, score_from_embed
 
 cfg = load_config()
 BUNDLE = None
@@ -25,6 +27,8 @@ META = {}
 
 def load_weights():
     global BUNDLE, META
+    if not torch.cuda.is_available():
+        torch.set_num_threads(int(cfg.get('cpu_threads', 4)))
     BUNDLE = load_bundle(model_path(cfg))
     META = BUNDLE.get("meta", {})
 
@@ -37,7 +41,8 @@ def score_image(
         return "Upload an image", 0.0, image
     if BUNDLE is None:
         load_weights()
-    work = image.convert("RGB")
+    original = ImageOps.exif_transpose(image).convert("RGB")
+    work = original
     if jpeg_q < 100:
         work = jpeg_compress(work, int(jpeg_q))
     if blur_sigma > 0:
@@ -51,8 +56,8 @@ def score_image(
     if scenario in CHAINS:
         # A selected scenario is applied directly to the uploaded original, so slider
         # settings never silently stack another transformation on a named scenario.
-        work = apply_chain(image.convert("RGB"), scenario)
-    feat = embed_one(
+        work = apply_chain(original, scenario)
+    feat = embed_for_score(
         work,
         model_id=META.get("clip_model_id", cfg["clip_model_id"]),
         use_forensic=META.get("use_forensic", True),
@@ -61,8 +66,10 @@ def score_image(
         tta_jpeg_quality=META.get("tta_jpeg_quality", cfg["tta_jpeg_quality"]),
         tta_resize_scale=META.get("tta_resize_scale", cfg["tta_resize_scale"]),
     )
-    pred = float(predict_proba(BUNDLE, feat.reshape(1, -1))[0])
-    pred = min(1.0, max(0.0, pred))
+    try:
+        pred = score_from_embed(BUNDLE, feat)
+    except ValueError:
+        return "Needs review (invalid model score; no authenticity claim)", 0.5, work
     label = verdict(pred, META.get("decision_policy"))
     return f"{label}  (AIGC score = {pred:.3f}; uncertainty may require review)", pred, work
 
@@ -92,7 +99,8 @@ def main() -> None:
         ],
         title="RepostGuard — AIGC detection after redistribution",
         description=(
-            "TikTok TechJam 2026 Track 5. Frozen CLIP ViT-B/32 + DINOv2-small + forensic stats + TTA. "
+            "Research prototype based on the TikTok TechJam 2026 Track 5 brief; never submitted. "
+            "Frozen CLIP ViT-B/32 + DINOv2-small + forensic stats + TTA. "
             f"{status} Simulate single edits or a complete repost chain. "
             "Needs review means the model abstains; a low score is not proof of authenticity."
         ),

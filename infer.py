@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 import traceback
 from pathlib import Path
+import torch
 
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
@@ -28,6 +30,8 @@ from src.score import embed_for_score, score_from_embed
 
 
 def clamp_pred(pred: float) -> float:
+    if not math.isfinite(float(pred)):
+        return FALLBACK_PRED
     return min(1.0, max(0.0, float(pred)))
 
 
@@ -47,8 +51,16 @@ def score_directory(
     config: Path | None = None,
     weights: Path | None = None,
     use_tta: bool | None = None,
+    cpu_threads: int | None = None,
 ) -> list[dict]:
     cfg = load_config(config)
+    # Small image forwards are slower with excessive CPU thread fan-out. Match the
+    # feature-cache runtime by default; callers can benchmark and override this.
+    threads = int(cpu_threads if cpu_threads is not None else cfg.get('cpu_threads', 4))
+    if threads < 1:
+        raise ValueError('cpu_threads must be positive')
+    if not torch.cuda.is_available():
+        torch.set_num_threads(threads)
     bundle = load_bundle(weights or model_path(cfg))
     meta = bundle.get("meta", {})
     model_id = meta.get("clip_model_id", cfg["clip_model_id"])
@@ -110,6 +122,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--config", type=Path, default=None)
     p.add_argument("--weights", type=Path, default=None, help="Override artifacts/repostguard.joblib")
     p.add_argument("--no_tta", action="store_true")
+    p.add_argument("--threads", type=int, default=None, help="CPU threads (default: 4); does not change CUDA settings")
     return p.parse_args()
 
 
@@ -123,6 +136,7 @@ def main() -> None:
             config=args.config,
             weights=args.weights,
             use_tta=False if args.no_tta else None,
+            cpu_threads=args.threads,
         )
     except FileNotFoundError as exc:
         raise SystemExit(str(exc)) from exc

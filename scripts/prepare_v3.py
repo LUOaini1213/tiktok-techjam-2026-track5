@@ -200,7 +200,7 @@ def main():
     train_models = {r['model'] for r in rows if r['role'] in ('train','cached_train')}
     assert 'VQDiffusion' not in train_models
     audit['counts_by_role'] = dict(Counter(r['role'] for r in rows))
-    audit['new_training_generators'] = sorted({r['model'] for r in rows if r['role']=='train' and r['model']!='SID'})
+    audit['new_training_generators'] = sorted({r['model'] for r in rows if r['role']=='train' and r['label']==1 and r['model']!='SID'})
     write_manifest(rows, audit, revisions, complete=True)
     print(json.dumps(audit, indent=2), flush=True)
 

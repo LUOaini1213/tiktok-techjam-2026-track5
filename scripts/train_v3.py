@@ -81,6 +81,7 @@ def main():
     assert np.array_equal(y, np.repeat([r['label'] for r in cached], vpi)), 'Legacy cache ordering/labels disagree with the manifest'
     del legacy; gc.collect()
     extra=np.load(BASE/'train.npz')
+    cache_fingerprint=str(extra['fingerprint'])
     X=np.concatenate([X,extra['X']]); y=np.r_[y,extra['y']]; sid=np.r_[sid,extra['sid']]; groups=np.r_[groups,extra['group']]
     if not np.isfinite(X).all(): raise ValueError('Non-finite training features')
     assert not set(groups)&{r['group'] for r in manifest['records'] if r['role'] in ('cal','dev','test')}
@@ -110,6 +111,7 @@ def main():
     del X,cx,extra; gc.collect()
     base_bundle=load_bundle(ROOT/'results/v2/repostguard.joblib')
     cal=np.load(BASE/'cal.npz'); uy,first=np.unique(cal['group'],return_index=True)
+    assert str(cal['fingerprint'])==cache_fingerprint, 'Mixed train/cal feature pipelines'
     if not np.isfinite(cal['X']).all(): raise ValueError('Non-finite calibration features')
     runtime=dict(python=platform.python_version(), **{p:version(p) for p in ('numpy','scipy','scikit-learn','torch','transformers','Pillow','joblib')})
     encoder_snapshots={mid:Path(try_to_load_from_cache(mid,'config.json')).parent.name
@@ -133,11 +135,14 @@ def main():
                     calibration_fit_groups=len(fit_groups),calibration_policy_groups=len(policy_groups),
                     runtime=runtime,
                     encoder_snapshots=encoder_snapshots,
+                    feature_cache_fingerprint=cache_fingerprint,
+                    training_code_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                     encoder_parameters=dict(clip_loaded=151277313,clip_active_vision=87849216,dinov2=22056576),
                     dataset_license='CommunityForensics-Small CC-BY-NC-SA-4.0, non-commercial research; SID-Set CC-BY-4.0')
         bundles[name]=dict(model=calibrated,meta=meta)
         save_bundle(ROOT/f'artifacts/repostguard_v3_{name}.joblib',calibrated,meta)
     dev=np.load(BASE/'dev.npz')
+    assert str(dev['fingerprint'])==cache_fingerprint, 'Mixed train/dev feature pipelines'
     if not np.isfinite(dev['X']).all(): raise ValueError('Non-finite development features')
     # Old v2 test images have already informed earlier iterations. Treat a filtered
     # subset explicitly as DEVELOPMENT, never as the newly sealed v3 final test.

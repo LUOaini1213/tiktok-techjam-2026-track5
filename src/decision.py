@@ -6,6 +6,8 @@ from scipy.stats import beta
 
 
 def binomial_upper(errors: int, n: int, confidence: float = 0.95) -> float:
+    if not 0 < confidence < 1:
+        raise ValueError("Confidence must lie strictly between zero and one")
     if n <= 0:
         raise ValueError("At least one independent source image is required")
     if not 0 <= errors <= n:
@@ -36,6 +38,8 @@ def select_policy(y, scores, groups, target_fpr=0.01, target_false_clear=0.05, c
     cleared. This avoids pretending correlated transform rows are independent trials.
     Bounds apply to the calibration distribution, never to arbitrary deployment data.
     """
+    if not 0 < target_fpr < 1 or not 0 < target_false_clear < 1:
+        raise ValueError("Error-rate targets must lie strictly between zero and one")
     real = np.sort(_group_extremes(y, scores, groups, 0, True))[::-1]
     fake = np.sort(_group_extremes(y, scores, groups, 1, False))
     def allowed(n, target):

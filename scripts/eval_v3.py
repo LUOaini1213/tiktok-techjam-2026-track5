@@ -10,18 +10,36 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 import numpy as np
 from sklearn.metrics import roc_auc_score, accuracy_score, brier_score_loss
+from threadpoolctl import threadpool_limits
 from src.decision import operating_metrics, binomial_upper
 from src.model import load_bundle, predict_proba
-from src.eval_robustness import stratified_bootstrap_auc_ci
+
+
+def weighted_auc_samples(y, scores, negative_counts, positive_counts):
+    """Exact empirical bootstrap AUC, including half credit for score ties.
+
+    Multinomial counts are equivalent to drawing original images with replacement.
+    The same counts are reused for every model, so differences remain paired.
+    """
+    y=np.asarray(y); scores=np.asarray(scores)
+    negative=scores[y==0]; positive=scores[y==1]
+    pairs=(positive[:,None]>negative[None,:]).astype(float)+.5*(positive[:,None]==negative[None,:])
+    with threadpool_limits(limits=4):
+        numerator=((positive_counts@pairs)*negative_counts).sum(axis=1)
+    return numerator/(positive_counts.sum(axis=1)*negative_counts.sum(axis=1))
+
+
+def bootstrap_aucs(y,scores,reps=1000,seed=31009):
+    rng=np.random.default_rng(seed); n0=int((y==0).sum()); n1=int((y==1).sum())
+    if not n0 or not n1: raise ValueError('Bootstrap AUC requires both labels')
+    negative=rng.multinomial(n0,np.full(n0,1/n0),size=reps)
+    positive=rng.multinomial(n1,np.full(n1,1/n1),size=reps)
+    return {name:weighted_auc_samples(y,s,negative,positive) for name,s in scores.items()}
 
 
 def paired_auc_ci(y,a,b,reps=1000):
-    rng=np.random.default_rng(31009); i0=np.flatnonzero(y==0); i1=np.flatnonzero(y==1)
-    values=[]
-    for _ in range(reps):
-        idx=np.r_[rng.choice(i0,len(i0)),rng.choice(i1,len(i1))]
-        values.append(roc_auc_score(y[idx],b[idx])-roc_auc_score(y[idx],a[idx]))
-    return [float(x) for x in np.percentile(values,[2.5,97.5])]
+    samples=bootstrap_aucs(np.asarray(y),{'a':a,'b':b},reps=reps)
+    return [float(x) for x in np.percentile(samples['b']-samples['a'],[2.5,97.5])]
 
 
 def write_csv(path,rows):
@@ -55,8 +73,11 @@ def main():
             idx=(d['name']==name)&domain_mask
             y=d['y'][idx]
             if len(np.unique(y))<2: continue
+            if len(np.unique(d['group'][idx]))!=len(y):
+                raise ValueError('Each condition must have one row per independent original')
+            bootstrap=bootstrap_aucs(y,{model:s[idx] for model,s in scores.items()})
             for model,s in scores.items():
-                p=s[idx]; lo,hi=stratified_bootstrap_auc_ci(y,p,reps=1000,seed=31009)
+                p=s[idx]; lo,hi=(float(v) for v in np.percentile(bootstrap[model],[2.5,97.5]))
                 op=operating_metrics(y,p,policies[model])
                 errors=int(((p>=policies[model]['aigc_threshold'])&(y==0)).sum())
                 row=dict(domain=domain,transform=name,model=model,n=len(y),auc=float(roc_auc_score(y,p)),
@@ -64,7 +85,7 @@ def main():
                          brier=float(brier_score_loss(y,p)),**op,
                          test_fpr_upper95=binomial_upper(errors,int((y==0).sum())))
                 rows.append(row)
-            lo,hi=paired_auc_ci(y,scores['v2'][idx],scores['v3'][idx])
+            lo,hi=(float(v) for v in np.percentile(bootstrap['v3']-bootstrap['v2'],[2.5,97.5]))
             paired.append(dict(domain=domain,transform=name,n=len(y),
                                delta_auc=float(roc_auc_score(y,scores['v3'][idx])-roc_auc_score(y,scores['v2'][idx])),
                                delta_auc_lo=lo,delta_auc_hi=hi))

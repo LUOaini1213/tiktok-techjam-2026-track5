@@ -22,3 +22,6 @@
 /scripts/prepare_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 /scripts/v4_common.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 /scripts/validate_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/src/forensic_v4_fast.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/eval_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/verify_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

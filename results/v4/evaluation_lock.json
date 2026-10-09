@@ -1,0 +1,12 @@
+{
+  "pretest_lock_sha256": "bbb1ea01664a39017b7c053ff7ec964c3db194497f87aac969d7f1c1915fb38d",
+  "evaluation_code_sha256": "e8128e3fce4caf7928853c4b689b1ea7b972a9315fec5e4b1e6c9f0da68b371b",
+  "report_sha256": {
+    "summary.json": "2b0fa794476d03c6d7908d2a948ca492c0918cb410672e4aab99ea489f2059b2",
+    "evaluation.csv": "2b5119985984804cf02d539c66d92fe73cf1f1090b342389dca68900ad6b7fd4",
+    "error_analysis.json": "92ce104ef583ec1f60101faa4de6b2c1b6de6e70cfe18304e1f442b86632dab0",
+    "comparison.png": "60d47003332dbc4c0c7bc30fbd56deb2de827b14618da801b1791d3f1d78eb18",
+    "REPORT.md": "b3ed704b184fd25729669ccf7a07b44cd1fe7e79772578df4f75e470b3a9557b"
+  },
+  "test_used_for_selection": false
+}

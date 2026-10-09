@@ -89,6 +89,9 @@ def build_demo(weights: Path | None = None) -> gr.Interface:
             load_weights(weights)
         status = "Weights loaded."
     except FileNotFoundError as e:
+        if weights is not None:
+            # Explicit opt-in must not silently fall back to the default model.
+            raise
         status = str(e)
 
     return gr.Interface(

@@ -37,7 +37,7 @@ CommunityForensics-Small is **CC-BY-NC-SA-4.0**. The v3 model is for
 **non-commercial research**; a public repository does not grant commercial rights.
 Dataset images are not redistributed.
 
-## Current results
+## Default V3 results
 
 <!-- V3_RESULTS -->
 The development-selected model was frozen before these new tests were scored.
@@ -85,6 +85,109 @@ benchmark, not a competition score. Complete methodology: [v3 protocol](docs/v3_
 Historical v1/v2 metrics and ablations are preserved in [v2 history](docs/v2_history.md)
 and [v2 snapshot](results/v2/). They are not contamination-free final-test claims.
 The old JPEG re-encoding control does not prove that source/compression bias is absent.
+
+## V4 research iteration (explicit opt-in)
+
+The bounded CPU experiments compare two new global logistic heads, a 64-unit MLP,
+histogram boosting, two local-feature logistic heads and two fixed 50/50 blends.
+**None passes the predeclared development gates. V3 remains the default.** The
+experimental artifact keeps the V3 classifier and fits a new sigmoid calibration
+and decision policy on independent calibration originals; it is not a stronger
+backbone or a successful local detector.
+
+The trade-off is visible on the 256-original, six-condition development set: the
+new C=.01 global logistic head raises external mean AUC from 0.8937 to 0.9521,
+but lowers SID real-versus-local-edit mean AUC from 0.9812 to 0.9629. The allowed
+loss was 0.005, so the head is rejected despite lower preview review rate. All
+trials, including unsuccessful local features and the bounded MLP's convergence warnings,
+are retained in [selection.json](results/v4/selection.json) and
+[head_trials.json](results/v4/head_trials.json).
+
+The experimental 1,748-D descriptor extends the exact 924-D global path with
+normalized DINO patch dispersion (768-D) and native corner forensic summaries
+(56-D). Patches share the CLS forward; no second encoder is added. These pooled
+features are **not localization masks or validated explanations**. Because the
+selected head ignores them, the shipped opt-in bundle uses a 924-D packaging
+adapter with exactly unchanged frozen-test predictions and does not extract the
+unused local features during inference.
+
+New calibration uses 1,280 originals, split into 640 probability-fit and 640
+final-policy originals (320 real and 320 AI in each half). Development preview
+thresholds reuse probability-fit labels and are diagnostic, not certification.
+The unique head is selected before the final-policy group is scored; there is
+no reselection after final calibration. The model and thresholds are then locked
+before extracting the new 384-original, 19-condition test.
+
+The published opt-in metadata attributes the retained classifier to V3's actual
+training data, code and weighting, separately from V4 calibration/selection code.
+The frozen trial bundle is preserved verbatim, with its provenance-only release
+correction recorded in the packaged metadata. No estimator or threshold is refit
+during packaging. Monotone probability recalibration changes operating decisions,
+not evidence of improved ranking AUC.
+
+The new thresholds cover **clean and crop-resize-JPEG only** under the sampled
+calibration distribution. Pointwise 95% bounds are not simultaneous, platform-wide
+or unseen-transform guarantees. The independent real test has only 192 originals:
+even zero false flags cannot certify a 1% error rate. See the
+[locked report](results/v4/REPORT.md), [protocol](docs/v4_protocol.md),
+[feature-branch diagnosis](results/v4/diagnosis/ablations.json), and
+[deployment checks](results/v4/preflight.json).
+
+After following Quickstart, select the experimental artifact explicitly:
+
+```text
+python infer.py --input_dir samples --output preds.json --weights results/v4/repostguard.joblib
+python app.py --weights results/v4/repostguard.joblib
+```
+
+Its CLI JSON contract is unchanged. The demo labels V4's calibration scope and
+keeps unsupported transformations distinct from sampled calibration conditions. The full
+CPU experiment is `python scripts/run_v4.py --prepared` **with archived V3
+training images/features and the completed V4 acquisition already present**;
+`scripts/prepare_v4.py` prepares new sources but does not reconstruct unpublished
+legacy caches. A clean clone supports inference and portable evidence tests, not
+a claim of one-click, bit-identical full retraining. Source images and large
+feature caches are not published. The Community Forensics non-commercial terms
+and the no-Devpost-submission statement apply to V4 too.
+
+### V4 matched sealed-test outcome
+
+Both versions score the same **384 originals × 19 conditions**, without using
+these results for model or threshold selection. V4's selected fallback and its
+independently recalibrated V3 comparison are identical, not separate new models.
+
+| Model / primary policy | Mean AUC | Real false flags | AI flag recall | AI false clear | Review |
+|---|---:|---:|---:|---:|---:|
+| Default V3 / frozen strict | 0.9044 | 0 observed | 15.0% | 0.33% | 87.2% |
+| Opt-in recalibration / conditionwise | 0.9044 | 0 observed | 30.9% | 3.32% | 63.8% |
+
+Rates are means across correlated conditions, not independent repeated trials.
+Lower review comes with **more false clearances**: counting each AI original once
+if *any* of its 19 views is cleared gives **3/192** for default V3 versus
+**28/192** for the opt-in policy. The latter is 14.6%, not the pooled-view 3.32%.
+Zero observed real flags on 192 originals still has a one-sided 95% upper bound
+of **1.55%**, so this test cannot certify a 1% FPR guarantee.
+
+Generalisation remains the main failure: mean AUC is **0.9893 on fresh SID**, but
+only **0.8198 on the named StyleGANXL holdout plus matched CF real sources**.
+The opt-in policy clears 26/96 CF AI originals in at least one condition. StyleGAN2
+was already training data, so this is not a whole-architecture holdout. These are
+matched benchmark observations, not evidence of a stronger production detector.
+The paired mean-AUC difference is zero (all four reported domain intervals are
+[0, 0]), as expected for monotone recalibration of the retained classifier.
+
+A representative failure is CF AI `0a54ca4f…` at JPEG-90: its opt-in score 0.1045
+falls below the low-signal threshold 0.1163. No authenticity claim is justified.
+Exact source IDs, transform-specific false positives at 0.5, false negatives and
+policy false-clear cases are in [the error note](results/v4/error_analysis.json).
+The **default artifact is unchanged**; V4 is available only for explicit research
+comparison, not silently promoted.
+
+Local V4 release checks: **88 passed, 2 skipped**. Both pretest/report byte locks,
+exact global-only packaging predictions, the real directory-to-JSON CLI,
+unreadable-file fallback and the seven-input/three-output localhost demo pass.
+The single-image versus batched calibration score drift is below the fixed
+1e-5 numerical guard; this is a measured runtime check, not a platform guarantee.
 
 ## Quickstart
 
@@ -198,6 +301,8 @@ default; to reproduce a Community Forensics row, first apply the documented fit.
   reference remains advisory, not a pristine independent generalisation claim.
 - SID tampered/local-edit images remain AIGC-positive; whole-image synthesis and
   local edits are not equally difficult. Tampered weight is selected in grouped CV.
+  Transformed images keep their source-level label. A crop can remove local-edit
+  evidence; this benchmark does not use masks to relabel the remaining pixels.
 - Heavy downscaling can destroy useful forensic evidence. There is no guarantee of
   recovery after information has been removed.
 - Public encoder weights and datasets retain upstream terms. Community Forensics
@@ -241,8 +346,10 @@ SciPy, OpenCV, matplotlib and Gradio.
 infer.py / app.py        CLI contract and interactive repost demo
 src/                    frozen features, transformations, policy and score path
 scripts/*v3*.py          provenance, audit, caches, training, locked evaluation
+scripts/*v4*.py          bounded trials, independent calibration, opt-in verification
 artifacts/              shipped selected head and WEIGHTS.txt
 results/v3/             matched report, intervals, selection lock and data manifest
+results/v4/             diagnosis, failed trials, new locked report and opt-in head
 results/v2/             archived baseline head and historical diagnostics
 docs/                   current protocol and preserved historical README
 tests/                  contracts, feature consistency, groups, policy and resume

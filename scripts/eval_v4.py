@@ -115,6 +115,8 @@ def main():
         axes[0].plot(range(len(rs)),[r['auc'] for r in rs],'-o',label=name)
     axes[0].set_xticks(range(len(rs)),[r['condition'] for r in rs],rotation=70,fontsize=7)
     axes[0].set_ylabel('Matched test AUC'); axes[0].legend(fontsize=8)
+    if selection['selected']=='v3_recal':
+        axes[0].set_title('Retained classifier; ranking curves overlap')
     for name in scores:
         rs=[]; s=scores[name]
         for margin in (0,.025,.05,.1,.2,.3,.4,.45,.49):
@@ -130,6 +132,8 @@ def main():
             'V3 remains the default throughout this research iteration. Neither historical nor new test labels train/calibrate/select the head.','',
             '| Model / policy | Mean AUC | Mean FPR | AI flag recall | False clear | Review |',
             '|---|---:|---:|---:|---:|---:|']
+    if selection['selected']=='v3_recal':
+        report[5:5]=['The selected fallback is exactly the independently recalibrated V3 baseline. Its duplicated rows preserve the comparison schema; they are not independent new models or trials.','']
     for name in scores:
         for pname,r in summary[name]['all'].items():
             report.append(f"| {name} / {pname} | {r['mean_auc']:.4f} | {r['fpr']:.2%} | {r['recall']:.1%} | {r['false_clear_rate']:.2%} | {r['review_rate']:.1%} |")
@@ -138,11 +142,14 @@ def main():
     for domain,r in paired.items(): report.append(f"- {domain}: {r['mean_auc_difference']:+.4f}, 95% CI [{r['ci95'][0]:+.4f}, {r['ci95'][1]:+.4f}].")
     report+=['','## Scope and limitations','',
              '- Calibration samples two conditions only. The remaining final-test transformations are out-of-calibration stress tests.',
+             '- Development previews reuse probability-fit groups and are not error certification. The unique head is chosen before independent final-policy groups are scored; no candidate switch follows final calibration.',
+             '- Original-count bounds assume independent/exchangeable originals within the sampled distribution; source/parent/subject dependence can violate that assumption.',
              '- Conditionwise bounds are pointwise, not a simultaneous or any-view guarantee. The strict policy counts an original wrong if any sampled view is wrong.',
              '- A calibration-supported bound is not a deployment certification. Real test sample counts cannot certify 1% even with no false flags.',
              '- CF uses identical 512x512 bicubic fit for both labels; native CLI geometry differs. FFHQ/landscape and generator/content acquisition bias can remain.',
              '- Only new CF fake model names are role-disjoint. Real-source families repeat; SID generators are not certified disjoint. StyleGAN2 was already training data, so StyleGANXL is a named-generator holdout, not an entire StyleGAN-architecture holdout.',
              '- Local pooled patch descriptors are experimental image-level features, not validated localization/explanations.',
+             '- SID tampered images retain their source-level AI-positive label after transforms. Crops may remove edited regions; no mask-based post-transform relabeling is applied.',
              '- The color-jitter preset is the +20% side, not a full brightness/contrast/saturation Cartesian sweep.',
              '- Protected bitmap/near exclusion cannot prove disjoint SID/COCO parent photographs or unknown encoder pretraining.',
              '- CommunityForensics-Small is CC-BY-NC-SA-4.0: non-commercial research only. No source images or large feature caches are published.',
@@ -152,6 +159,7 @@ def main():
     # A generated report is output data, not a hand-written source edit.
     (REPORT/'REPORT.md').write_text('\n'.join(report),encoding='utf-8')
     write_json(REPORT/'evaluation_lock.json',dict(pretest_lock_sha256=sha(REPORT/'pretest_lock.json'),
+                evaluation_code_sha256=sha(Path(__file__)),
                 report_sha256={p:sha(REPORT/p) for p in ('summary.json','evaluation.csv','error_analysis.json','comparison.png','REPORT.md')},
                 test_used_for_selection=False))
     validate_lock(); preserve_v3(); print('V4 sealed evaluation completed without changing head or thresholds',flush=True)

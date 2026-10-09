@@ -67,6 +67,8 @@ def test_memory_efficient_center_is_exactly_v3_pixels():
     for h,w in ((301,503),(81,90),(300,70)):
         im=Image.fromarray(rng.integers(0,256,(h,w,3),dtype=np.uint8))
         np.testing.assert_array_equal(center_forensic(im),forensic_vector(im))
+        from src.forensic_v4_fast import forensic_vector_fast
+        np.testing.assert_array_equal(forensic_vector_fast(im),forensic_vector(im))
 
 
 def test_v4_view_grid_and_streaming_budget():
@@ -127,3 +129,40 @@ def test_atomic_cache_allows_path_metadata(tmp_path):
     destination=tmp_path/'cache.npz'
     save_npz(destination,X=np.zeros((2,1748)),path=np.array(['a.png','b.png']))
     with np.load(destination) as d: assert d['path'].tolist()==['a.png','b.png']
+
+
+def test_retained_classifier_release_metadata_is_not_candidate_training():
+    from scripts.verify_v4 import release_meta
+    policy={'aigc_threshold':.9,'authentic_threshold':.1}
+    original=dict(v4_head='v3_recal',training_code_sha256='new-selection-code',
+                  training_data='new candidate sources',decision_policy=policy)
+    base=dict(training_code_sha256='v3-fit-code',training_data='v3 sources',
+              tampered_weight=1.,seed=31009,manifest_sha256='v3-manifest',selection={'C':.01})
+    corrected=release_meta(original,base)
+    assert corrected['training_data']=='v3 sources'
+    assert corrected['calibration_selection_code_sha256']=='new-selection-code'
+    assert corrected['training_code_sha256']=='v3-fit-code'
+    assert corrected['decision_policy'] is policy
+    assert original['training_data']=='new candidate sources'
+
+
+def test_demo_explicit_missing_weights_do_not_fall_back(monkeypatch,tmp_path):
+    import app
+    calls=[]
+    def missing(weights=None):
+        calls.append(weights)
+        raise FileNotFoundError(str(weights))
+    monkeypatch.setattr(app,'load_weights',missing)
+    explicit=tmp_path/'missing-experimental.joblib'
+    with pytest.raises(FileNotFoundError): app.build_demo(explicit)
+    assert calls==[explicit]
+
+
+def test_release_fixtures_ignore_gitkeep_and_support_jpeg(tmp_path):
+    from PIL import Image
+    from scripts.verify_v4 import sample_fixtures
+    (tmp_path/'.gitkeep').touch()
+    (tmp_path/'README.md').write_text('Not a test image',encoding='utf-8')
+    for name in ('a.jpg','b.jpg'): Image.new('RGB',(4,4)).save(tmp_path/name)
+    fixtures=sample_fixtures(tmp_path)
+    assert len(fixtures)==2 and all(im.size==(4,4) for im in fixtures)

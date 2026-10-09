@@ -1,0 +1,421 @@
+{
+  "v3_default": {
+    "false_positive_at_05": {
+      "view_errors": 169,
+      "distinct_originals": 35,
+      "examples": [
+        {
+          "path": "data/v4/images/cb37bf1812e99f74055d95dd138a99c1ec157f3e6c652248846b355422993979.png",
+          "group": "cb37bf1812e99f74055d95dd138a99c1ec157f3e6c652248846b355422993979",
+          "condition": "jpeg_30",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 0,
+          "score": 0.9135658903204832
+        },
+        {
+          "path": "data/v4/images/4081fb7e27bbffd5ae37fb73a7575c1b4f31293cc1502e04071bd060be8d910e.png",
+          "group": "4081fb7e27bbffd5ae37fb73a7575c1b4f31293cc1502e04071bd060be8d910e",
+          "condition": "blur_1.0",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 0,
+          "score": 0.898163613741417
+        },
+        {
+          "path": "data/v4/images/140bfcb15d6ba99718cfaa05af1c666bcf3cdce3697d853fa6516e6afd94237c.png",
+          "group": "140bfcb15d6ba99718cfaa05af1c666bcf3cdce3697d853fa6516e6afd94237c",
+          "condition": "blur_resize_jpeg",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 0,
+          "score": 0.8963935228205245
+        },
+        {
+          "path": "data/v4/images/b795d55fd3093a528ce28d58374fa9931795639f4d7c0f31f6066997a6676577.png",
+          "group": "b795d55fd3093a528ce28d58374fa9931795639f4d7c0f31f6066997a6676577",
+          "condition": "jpeg_30",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 0,
+          "score": 0.8772177644158191
+        },
+        {
+          "path": "data/v4/images/3ced448bb635b0f6299c68980ab2cb81665fc191ffb222f1245b7d3fde9f3a6d.png",
+          "group": "3ced448bb635b0f6299c68980ab2cb81665fc191ffb222f1245b7d3fde9f3a6d",
+          "condition": "blur_1.0",
+          "domain": "saberzl/SID_Set",
+          "sid": 0,
+          "score": 0.8703629193709799
+        }
+      ]
+    },
+    "false_negative_at_05": {
+      "view_errors": 1334,
+      "distinct_originals": 122,
+      "examples": [
+        {
+          "path": "data/v4/images/0a54ca4f711d6ab626d42bcaedde19da3a4e8c64e6ef2f0089dd3c19e7d8792d.png",
+          "group": "0a54ca4f711d6ab626d42bcaedde19da3a4e8c64e6ef2f0089dd3c19e7d8792d",
+          "condition": "jpeg_90",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.0004789078747532353
+        },
+        {
+          "path": "data/v4/images/7648eede4c5eb2d42087b727f2155bc4f13410cbcbe15a8f91712696f1cc26a2.png",
+          "group": "7648eede4c5eb2d42087b727f2155bc4f13410cbcbe15a8f91712696f1cc26a2",
+          "condition": "noise_0.10",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.00119718156455438
+        },
+        {
+          "path": "data/v4/images/8e9bb987315fb60a2c691bae0aa1ad3074e06ebc25e6be1b664933f152b70ad1.png",
+          "group": "8e9bb987315fb60a2c691bae0aa1ad3074e06ebc25e6be1b664933f152b70ad1",
+          "condition": "noise_0.10",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.00268419155883683
+        },
+        {
+          "path": "data/v4/images/ab7f6cd03609c1b0cbae536d74f9faba7cf61d8670666f8f7d503d6c8df95269.png",
+          "group": "ab7f6cd03609c1b0cbae536d74f9faba7cf61d8670666f8f7d503d6c8df95269",
+          "condition": "noise_jpeg",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.00331907981091055
+        },
+        {
+          "path": "data/v4/images/72469c42d50ff170e13c696bbc1097ab92bc465d9928ae5e559898f9e3231600.png",
+          "group": "72469c42d50ff170e13c696bbc1097ab92bc465d9928ae5e559898f9e3231600",
+          "condition": "noise_0.10",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.003365508769675977
+        }
+      ]
+    },
+    "policy_false_flag": {
+      "view_errors": 0,
+      "distinct_originals": 0,
+      "examples": []
+    },
+    "policy_false_clear": {
+      "view_errors": 12,
+      "distinct_originals": 3,
+      "examples": [
+        {
+          "path": "data/v4/images/0a54ca4f711d6ab626d42bcaedde19da3a4e8c64e6ef2f0089dd3c19e7d8792d.png",
+          "group": "0a54ca4f711d6ab626d42bcaedde19da3a4e8c64e6ef2f0089dd3c19e7d8792d",
+          "condition": "jpeg_90",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.0004789078747532353
+        },
+        {
+          "path": "data/v4/images/7648eede4c5eb2d42087b727f2155bc4f13410cbcbe15a8f91712696f1cc26a2.png",
+          "group": "7648eede4c5eb2d42087b727f2155bc4f13410cbcbe15a8f91712696f1cc26a2",
+          "condition": "noise_0.10",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.00119718156455438
+        },
+        {
+          "path": "data/v4/images/8e9bb987315fb60a2c691bae0aa1ad3074e06ebc25e6be1b664933f152b70ad1.png",
+          "group": "8e9bb987315fb60a2c691bae0aa1ad3074e06ebc25e6be1b664933f152b70ad1",
+          "condition": "noise_0.10",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.00268419155883683
+        }
+      ]
+    }
+  },
+  "v3_recal": {
+    "false_positive_at_05": {
+      "view_errors": 301,
+      "distinct_originals": 53,
+      "examples": [
+        {
+          "path": "data/v4/images/cb37bf1812e99f74055d95dd138a99c1ec157f3e6c652248846b355422993979.png",
+          "group": "cb37bf1812e99f74055d95dd138a99c1ec157f3e6c652248846b355422993979",
+          "condition": "jpeg_30",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 0,
+          "score": 0.9669845592930819
+        },
+        {
+          "path": "data/v4/images/4081fb7e27bbffd5ae37fb73a7575c1b4f31293cc1502e04071bd060be8d910e.png",
+          "group": "4081fb7e27bbffd5ae37fb73a7575c1b4f31293cc1502e04071bd060be8d910e",
+          "condition": "blur_1.0",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 0,
+          "score": 0.9638759560624175
+        },
+        {
+          "path": "data/v4/images/140bfcb15d6ba99718cfaa05af1c666bcf3cdce3697d853fa6516e6afd94237c.png",
+          "group": "140bfcb15d6ba99718cfaa05af1c666bcf3cdce3697d853fa6516e6afd94237c",
+          "condition": "blur_resize_jpeg",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 0,
+          "score": 0.9635011399150343
+        },
+        {
+          "path": "data/v4/images/b795d55fd3093a528ce28d58374fa9931795639f4d7c0f31f6066997a6676577.png",
+          "group": "b795d55fd3093a528ce28d58374fa9931795639f4d7c0f31f6066997a6676577",
+          "condition": "jpeg_30",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 0,
+          "score": 0.9591936414868827
+        },
+        {
+          "path": "data/v4/images/3ced448bb635b0f6299c68980ab2cb81665fc191ffb222f1245b7d3fde9f3a6d.png",
+          "group": "3ced448bb635b0f6299c68980ab2cb81665fc191ffb222f1245b7d3fde9f3a6d",
+          "condition": "blur_1.0",
+          "domain": "saberzl/SID_Set",
+          "sid": 0,
+          "score": 0.9575387616154211
+        }
+      ]
+    },
+    "false_negative_at_05": {
+      "view_errors": 1090,
+      "distinct_originals": 107,
+      "examples": [
+        {
+          "path": "data/v4/images/0a54ca4f711d6ab626d42bcaedde19da3a4e8c64e6ef2f0089dd3c19e7d8792d.png",
+          "group": "0a54ca4f711d6ab626d42bcaedde19da3a4e8c64e6ef2f0089dd3c19e7d8792d",
+          "condition": "jpeg_90",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.10450670844109664
+        },
+        {
+          "path": "data/v4/images/7648eede4c5eb2d42087b727f2155bc4f13410cbcbe15a8f91712696f1cc26a2.png",
+          "group": "7648eede4c5eb2d42087b727f2155bc4f13410cbcbe15a8f91712696f1cc26a2",
+          "condition": "noise_0.10",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.10491417229986892
+        },
+        {
+          "path": "data/v4/images/8e9bb987315fb60a2c691bae0aa1ad3074e06ebc25e6be1b664933f152b70ad1.png",
+          "group": "8e9bb987315fb60a2c691bae0aa1ad3074e06ebc25e6be1b664933f152b70ad1",
+          "condition": "noise_0.10",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.1057621855079774
+        },
+        {
+          "path": "data/v4/images/ab7f6cd03609c1b0cbae536d74f9faba7cf61d8670666f8f7d503d6c8df95269.png",
+          "group": "ab7f6cd03609c1b0cbae536d74f9faba7cf61d8670666f8f7d503d6c8df95269",
+          "condition": "noise_jpeg",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.10612608764894765
+        },
+        {
+          "path": "data/v4/images/72469c42d50ff170e13c696bbc1097ab92bc465d9928ae5e559898f9e3231600.png",
+          "group": "72469c42d50ff170e13c696bbc1097ab92bc465d9928ae5e559898f9e3231600",
+          "condition": "noise_0.10",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.10615274282408485
+        }
+      ]
+    },
+    "policy_false_flag": {
+      "view_errors": 0,
+      "distinct_originals": 0,
+      "examples": []
+    },
+    "policy_false_clear": {
+      "view_errors": 121,
+      "distinct_originals": 28,
+      "examples": [
+        {
+          "path": "data/v4/images/0a54ca4f711d6ab626d42bcaedde19da3a4e8c64e6ef2f0089dd3c19e7d8792d.png",
+          "group": "0a54ca4f711d6ab626d42bcaedde19da3a4e8c64e6ef2f0089dd3c19e7d8792d",
+          "condition": "jpeg_90",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.10450670844109664
+        },
+        {
+          "path": "data/v4/images/7648eede4c5eb2d42087b727f2155bc4f13410cbcbe15a8f91712696f1cc26a2.png",
+          "group": "7648eede4c5eb2d42087b727f2155bc4f13410cbcbe15a8f91712696f1cc26a2",
+          "condition": "noise_0.10",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.10491417229986892
+        },
+        {
+          "path": "data/v4/images/8e9bb987315fb60a2c691bae0aa1ad3074e06ebc25e6be1b664933f152b70ad1.png",
+          "group": "8e9bb987315fb60a2c691bae0aa1ad3074e06ebc25e6be1b664933f152b70ad1",
+          "condition": "noise_0.10",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.1057621855079774
+        },
+        {
+          "path": "data/v4/images/ab7f6cd03609c1b0cbae536d74f9faba7cf61d8670666f8f7d503d6c8df95269.png",
+          "group": "ab7f6cd03609c1b0cbae536d74f9faba7cf61d8670666f8f7d503d6c8df95269",
+          "condition": "noise_jpeg",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.10612608764894765
+        },
+        {
+          "path": "data/v4/images/72469c42d50ff170e13c696bbc1097ab92bc465d9928ae5e559898f9e3231600.png",
+          "group": "72469c42d50ff170e13c696bbc1097ab92bc465d9928ae5e559898f9e3231600",
+          "condition": "noise_0.10",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.10615274282408485
+        }
+      ]
+    }
+  },
+  "v4_selected": {
+    "false_positive_at_05": {
+      "view_errors": 301,
+      "distinct_originals": 53,
+      "examples": [
+        {
+          "path": "data/v4/images/cb37bf1812e99f74055d95dd138a99c1ec157f3e6c652248846b355422993979.png",
+          "group": "cb37bf1812e99f74055d95dd138a99c1ec157f3e6c652248846b355422993979",
+          "condition": "jpeg_30",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 0,
+          "score": 0.9669845592930819
+        },
+        {
+          "path": "data/v4/images/4081fb7e27bbffd5ae37fb73a7575c1b4f31293cc1502e04071bd060be8d910e.png",
+          "group": "4081fb7e27bbffd5ae37fb73a7575c1b4f31293cc1502e04071bd060be8d910e",
+          "condition": "blur_1.0",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 0,
+          "score": 0.9638759560624175
+        },
+        {
+          "path": "data/v4/images/140bfcb15d6ba99718cfaa05af1c666bcf3cdce3697d853fa6516e6afd94237c.png",
+          "group": "140bfcb15d6ba99718cfaa05af1c666bcf3cdce3697d853fa6516e6afd94237c",
+          "condition": "blur_resize_jpeg",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 0,
+          "score": 0.9635011399150343
+        },
+        {
+          "path": "data/v4/images/b795d55fd3093a528ce28d58374fa9931795639f4d7c0f31f6066997a6676577.png",
+          "group": "b795d55fd3093a528ce28d58374fa9931795639f4d7c0f31f6066997a6676577",
+          "condition": "jpeg_30",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 0,
+          "score": 0.9591936414868827
+        },
+        {
+          "path": "data/v4/images/3ced448bb635b0f6299c68980ab2cb81665fc191ffb222f1245b7d3fde9f3a6d.png",
+          "group": "3ced448bb635b0f6299c68980ab2cb81665fc191ffb222f1245b7d3fde9f3a6d",
+          "condition": "blur_1.0",
+          "domain": "saberzl/SID_Set",
+          "sid": 0,
+          "score": 0.9575387616154211
+        }
+      ]
+    },
+    "false_negative_at_05": {
+      "view_errors": 1090,
+      "distinct_originals": 107,
+      "examples": [
+        {
+          "path": "data/v4/images/0a54ca4f711d6ab626d42bcaedde19da3a4e8c64e6ef2f0089dd3c19e7d8792d.png",
+          "group": "0a54ca4f711d6ab626d42bcaedde19da3a4e8c64e6ef2f0089dd3c19e7d8792d",
+          "condition": "jpeg_90",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.10450670844109664
+        },
+        {
+          "path": "data/v4/images/7648eede4c5eb2d42087b727f2155bc4f13410cbcbe15a8f91712696f1cc26a2.png",
+          "group": "7648eede4c5eb2d42087b727f2155bc4f13410cbcbe15a8f91712696f1cc26a2",
+          "condition": "noise_0.10",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.10491417229986892
+        },
+        {
+          "path": "data/v4/images/8e9bb987315fb60a2c691bae0aa1ad3074e06ebc25e6be1b664933f152b70ad1.png",
+          "group": "8e9bb987315fb60a2c691bae0aa1ad3074e06ebc25e6be1b664933f152b70ad1",
+          "condition": "noise_0.10",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.1057621855079774
+        },
+        {
+          "path": "data/v4/images/ab7f6cd03609c1b0cbae536d74f9faba7cf61d8670666f8f7d503d6c8df95269.png",
+          "group": "ab7f6cd03609c1b0cbae536d74f9faba7cf61d8670666f8f7d503d6c8df95269",
+          "condition": "noise_jpeg",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.10612608764894765
+        },
+        {
+          "path": "data/v4/images/72469c42d50ff170e13c696bbc1097ab92bc465d9928ae5e559898f9e3231600.png",
+          "group": "72469c42d50ff170e13c696bbc1097ab92bc465d9928ae5e559898f9e3231600",
+          "condition": "noise_0.10",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.10615274282408485
+        }
+      ]
+    },
+    "policy_false_flag": {
+      "view_errors": 0,
+      "distinct_originals": 0,
+      "examples": []
+    },
+    "policy_false_clear": {
+      "view_errors": 121,
+      "distinct_originals": 28,
+      "examples": [
+        {
+          "path": "data/v4/images/0a54ca4f711d6ab626d42bcaedde19da3a4e8c64e6ef2f0089dd3c19e7d8792d.png",
+          "group": "0a54ca4f711d6ab626d42bcaedde19da3a4e8c64e6ef2f0089dd3c19e7d8792d",
+          "condition": "jpeg_90",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.10450670844109664
+        },
+        {
+          "path": "data/v4/images/7648eede4c5eb2d42087b727f2155bc4f13410cbcbe15a8f91712696f1cc26a2.png",
+          "group": "7648eede4c5eb2d42087b727f2155bc4f13410cbcbe15a8f91712696f1cc26a2",
+          "condition": "noise_0.10",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.10491417229986892
+        },
+        {
+          "path": "data/v4/images/8e9bb987315fb60a2c691bae0aa1ad3074e06ebc25e6be1b664933f152b70ad1.png",
+          "group": "8e9bb987315fb60a2c691bae0aa1ad3074e06ebc25e6be1b664933f152b70ad1",
+          "condition": "noise_0.10",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.1057621855079774
+        },
+        {
+          "path": "data/v4/images/ab7f6cd03609c1b0cbae536d74f9faba7cf61d8670666f8f7d503d6c8df95269.png",
+          "group": "ab7f6cd03609c1b0cbae536d74f9faba7cf61d8670666f8f7d503d6c8df95269",
+          "condition": "noise_jpeg",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.10612608764894765
+        },
+        {
+          "path": "data/v4/images/72469c42d50ff170e13c696bbc1097ab92bc465d9928ae5e559898f9e3231600.png",
+          "group": "72469c42d50ff170e13c696bbc1097ab92bc465d9928ae5e559898f9e3231600",
+          "condition": "noise_0.10",
+          "domain": "OwensLab/CommunityForensics-Small",
+          "sid": 1,
+          "score": 0.10615274282408485
+        }
+      ]
+    }
+  }
+}

@@ -32,13 +32,14 @@ jobs:
         run: |
           python - <<'PY'
           import json, subprocess, sys
-          result = subprocess.run([sys.executable, "infer.py", "--input_dir", "samples", "--output", "preds.json"], text=True, capture_output=True)
-          print(result.stdout)
-          print(result.stderr, file=sys.stderr)
-          assert result.returncode == 0
-          assert "WARNING: failed to score " not in result.stderr, "Valid samples must be scored, not silently replaced by fallback values"
-          rows = json.load(open("preds.json", encoding="utf-8"))
-          assert len(rows) == 2 and all(set(r) == {"image_path", "pred"} for r in rows)
-          assert all(0.0 <= r["pred"] <= 1.0 for r in rows)
-          print("preds.json ok:", rows)
+          for weights in ("artifacts/repostguard.joblib", "results/v4/repostguard.joblib"):
+              result = subprocess.run([sys.executable, "infer.py", "--input_dir", "samples", "--output", "preds.json", "--weights", weights], text=True, capture_output=True)
+              print(result.stdout)
+              print(result.stderr, file=sys.stderr)
+              assert result.returncode == 0, weights
+              assert "WARNING: failed to score " not in result.stderr, "Valid samples must be scored, not silently replaced by fallback values"
+              rows = json.load(open("preds.json", encoding="utf-8"))
+              assert len(rows) == 2 and all(set(r) == {"image_path", "pred"} for r in rows)
+              assert all(0.0 <= r["pred"] <= 1.0 for r in rows)
+              print(weights, "preds.json ok:", rows)
           PY

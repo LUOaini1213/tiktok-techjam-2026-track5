@@ -9,6 +9,7 @@ import numpy as np
 import torch
 from .augment import to_rgb, jpeg_compress, down_up_resize
 from .features import load_dino, clip_embed_batch_dual, forensic_vector
+from .forensic_v4_fast import forensic_vector_fast
 
 GLOBAL_DIM = 924
 LOCAL_DIM = 824  # 384 patch std + 384 patch max absolute deviation + 2*28 corner stats
@@ -28,7 +29,7 @@ def corner_summary(image):
     image = to_rgb(image); w,h=image.size
     cw,ch=min(w,256),min(h,256)
     boxes=[(0,0),(w-cw,0),(0,h-ch),(w-cw,h-ch)]
-    f=np.stack([forensic_vector(image.crop((x,y,x+cw,y+ch))) for x,y in boxes])
+    f=np.stack([forensic_vector_fast(image.crop((x,y,x+cw,y+ch))) for x,y in boxes])
     return np.r_[f.std(axis=0), f.max(axis=0)].astype(np.float32)
 
 

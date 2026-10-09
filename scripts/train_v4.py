@@ -129,6 +129,7 @@ def main():
     models={'v3_recal':FeatureHead(base['model'])}; trials=[]
     with threadpool_limits(limits=4):
         X,y,sid,groups,domain=global_train()
+        global_training_unique=int(len(np.unique(groups)))
         global_specs=[('lr_001','lr',.01),('lr_01','lr',.1),('mlp64','mlp',.01),('hgb80','hgb',.01)]
         for name,kind,C in global_specs:
             start=time.monotonic(); folds=bounded_cv(kind,X,y,sid,groups,domain,C)
@@ -153,9 +154,12 @@ def main():
     bundles={}; records={}
     def evaluate(name,model):
         calibrated=calibrate(model,cal['X'][pi],cal['y'][pi])
-        cs=calibrated.predict_proba(cal['X'][ti])[:,1]
-        strict=numerical_guard(select_policy(cal['y'][ti],cs,cal['group'][ti]))
-        condition=conditionwise_policy(cal['y'][ti],cs,cal['group'][ti],cal['name'][ti])
+        # Development preview uses probability-fit groups only. These provisional
+        # bounds are not final certification; final policy groups remain untouched
+        # until the unique head has been selected on development below.
+        cs=calibrated.predict_proba(cal['X'][pi])[:,1]
+        strict=numerical_guard(select_policy(cal['y'][pi],cs,cal['group'][pi]))
+        condition=conditionwise_policy(cal['y'][pi],cs,cal['group'][pi],cal['name'][pi])
         ds=calibrated.predict_proba(dev['X'])[:,1]
         inherited={k:v for k,v in base['meta'].items() if k not in (
             'metrics','selection','n_train_unique','training_data','v3_head','tampered_weight',
@@ -163,6 +167,10 @@ def main():
         bundles[name]=dict(model=calibrated,meta=dict(inherited,version='v4',feature_variant='v4_local',feature_dim=1748,
                             decision_policy=condition,strict_decision_policy=strict,seed=SEED,
                             calibration='640 disjoint probability-fit originals; 640 threshold-policy originals',
+                            calibration_fit_groups=len(prob),calibration_policy_groups=len(policy),
+                            n_train_unique=(12765 if name=='v3_recal' else 640 if name.startswith('local_') else global_training_unique),
+                            requires_local_features='local' in name,
+                            final_policy_calibrated=False,
                             calibration_scope='clean and crop_resize_jpeg only; pointwise, not simultaneous',
                             manifest_sha256=sha(DATA/'manifest.json'),feature_cache_fingerprint=fp,
                             training_code_sha256=sha(Path(__file__)),
@@ -189,9 +197,22 @@ def main():
                        lower_review=r['conditionwise']['review_rate']<reference['conditionwise']['review_rate'])
         if name!='v3_recal' and all(r['gate'].values()): eligible.append(name)
     selected=min(eligible,key=lambda n:records[n]['conditionwise']['review_rate']) if eligible else 'v3_recal'
+    # Only now expose policy-group scores. No re-selection, candidate switching
+    # or threshold choice based on final-calibration performance is permitted.
+    for name in {selected,'v3_recal'}:
+        bundle=bundles[name]; cs=bundle['model'].predict_proba(cal['X'][ti])[:,1]
+        bundle['meta']['decision_policy']=conditionwise_policy(cal['y'][ti],cs,cal['group'][ti],cal['name'][ti])
+        bundle['meta']['strict_decision_policy']=numerical_guard(select_policy(cal['y'][ti],cs,cal['group'][ti]))
+        bundle['meta']['final_policy_calibrated']=True
+        bundle['meta']['head_selected_before_final_policy']=True
+        ds=bundle['model'].predict_proba(dev['X'])[:,1]
+        records[name]['postselection_final_policy_diagnostic']=summary(dev,ds,bundle['meta']['decision_policy'])
+        save_bundle(CACHE/f'{name}.joblib',**bundle)
     selection=dict(selected=selected,eligible=eligible,retain_v3_default=not bool(eligible),trials=records,
                    rule='dev review reduction with supported sampled-condition calibration bounds and <=.005 external/tampered mean AUC loss versus independently recalibrated V3',
-                   test_used_for_selection=False,protocol_sha256=sha(ROOT/'docs/v4_protocol.md'),
+                   test_used_for_selection=False,final_policy_groups_used_for_head_selection=False,
+                   preview_policy_scope='Probability-fit originals reused for development preview only, not final error certification. Final policy groups first scored after unique head selection; no re-selection.',
+                   protocol_sha256=sha(ROOT/'docs/v4_protocol.md'),
                    default_v3_sha256=preserve_v3(),feature_fingerprint=fp)
     write_json(REPORT/'selection.json',selection)
     save_bundle(REPORT/'frozen_pretest.joblib',**bundles[selected])
@@ -202,6 +223,7 @@ def main():
              'src/decision_v4.py','scripts/train_v4.py','scripts/extract_v4.py','scripts/prepare_v4.py']
     sources+=['scripts/train.py','src/model.py','src/score.py','scripts/v4_common.py',
               'scripts/validate_v4.py','results/v4/protocol_audit.json']
+    sources+=['src/forensic_v4_fast.py','results/v4/corner_migration.json']
     write_json(REPORT/'pretest_lock.json',dict(sha256={p:sha(ROOT/p) for p in sources},selected=selected,
                                              test_used_for_selection=False,default_unchanged=True))
     print('HEAD AND POLICY LOCKED BEFORE SEALED TEST:',selected,'eligible=',eligible,flush=True)

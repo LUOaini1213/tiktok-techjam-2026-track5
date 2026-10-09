@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from contextlib import contextmanager
 from pathlib import Path
 import numpy as np
 
@@ -40,7 +41,7 @@ def save_npz(destination, **values):
 
 def source_fingerprint(manifest):
     sources = ('src/features.py', 'src/augment.py', 'src/repost.py',
-               'src/features_v4.py', 'scripts/extract_v4.py')
+               'src/features_v4.py', 'src/forensic_v4_fast.py', 'scripts/extract_v4.py')
     return hashlib.sha256(Path(manifest).read_bytes() +
         b''.join((ROOT / name).read_bytes() for name in sources)).hexdigest()
 
@@ -53,3 +54,16 @@ def preserve_v3():
     if sha(ROOT / 'artifacts/repostguard.joblib') != read_json(ROOT / 'results/v3/preflight.json')['shipped_model_sha256']:
         raise RuntimeError('Default V3 artifact changed; V4 experiments must not replace it')
     return sha(ROOT / 'artifacts/repostguard.joblib')
+
+
+@contextmanager
+def awake_during_job():
+    """Temporary Windows automatic-sleep assertion; no display/power-plan changes."""
+    import sys
+    if sys.platform=='win32':
+        import ctypes
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)
+    try:
+        yield
+    finally:
+        if sys.platform=='win32': ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)

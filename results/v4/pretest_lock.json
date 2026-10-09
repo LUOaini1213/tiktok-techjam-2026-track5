@@ -1,0 +1,27 @@
+{
+  "sha256": {
+    "results/v4/frozen_pretest.joblib": "b8bb73c6f7ccc255d900175047c0137f1a3c9c45f0f1f164ec287c5bd51c0589",
+    "results/v4/selection.json": "7c840146cbcb32a88a1020c533c103ec2c21678454696ec543eb47fead95d782",
+    "results/v4/calibration_split.json": "0930e264de10aa942f754a3b30b9e5b3525337e827584dd922303f649597d0f3",
+    "results/v4/baseline_recal.joblib": "b8bb73c6f7ccc255d900175047c0137f1a3c9c45f0f1f164ec287c5bd51c0589",
+    "results/v4/data_manifest.json": "3ef545888fb38d03d659576edc69399ad3203e061985a191c3447d5c6a320c98",
+    "docs/v4_protocol.md": "49aa075b5a853ec03e0e7a3a1e2b08d2551b0d7d0440ca9b33dba6d44306a28c",
+    "src/features_v4.py": "eae06aafd96453bcf07d9e05e87e1b38b3908c8568181ce64548cefad35addfb",
+    "src/model_v4.py": "118a9ba3f245204065ec4bbcee3fa9feff2e5786734092a42b870a68b6d90bc9",
+    "src/decision_v4.py": "0217a44f2b4cdced40b75915a0081e3ddd6b79fa1f393e08fe8982ec51771ad1",
+    "scripts/train_v4.py": "5c8ea8926b434cd57cafcc3900c377c89d2b407026e035c67d732241149d642e",
+    "scripts/extract_v4.py": "02bfb42fce3681afd8d3637e0f6df9d1835f88f92298274821d6ff525e382909",
+    "scripts/prepare_v4.py": "a407e905d9e8df163d7a69826285d0aa65e276b7d932ae079e5791b9edb6e53a",
+    "scripts/train.py": "241ab313b12b3fbeec59f6fa3aff7e33431952c89e3a75819798ef02c5c3dd46",
+    "src/model.py": "88d1fe0a32edf0276469200cf33f225f3bb40445264d88598c9bfba59ee384e2",
+    "src/score.py": "704e4dd851ab59985344d16b5dd93069ac54561eb4bafae64a9cb39195d53539",
+    "scripts/v4_common.py": "5d3abee3ad598ec0ef8bd4a5071e64938025740f65747cbb7bb46665dc541bf4",
+    "scripts/validate_v4.py": "b26b1a2ae66c5f23b6e432a1799d492660cb98a0803021364ebe1f71cbad6700",
+    "results/v4/protocol_audit.json": "1dfd1515b44ffafa9685886a52ab0b9ee85144ead68dedd93b470c9c02d61ebb",
+    "src/forensic_v4_fast.py": "f681be9e4695ca6c64b41ec3987f3c26994146dfcf1db3e0b9c9342a18a1b8cc",
+    "results/v4/corner_migration.json": "d5b7ca74dd8d2e2d26919e65bfe07118465e8902b91120fe633a866d326da258"
+  },
+  "selected": "v3_recal",
+  "test_used_for_selection": false,
+  "default_unchanged": true
+}

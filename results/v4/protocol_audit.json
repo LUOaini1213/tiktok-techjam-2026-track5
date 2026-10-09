@@ -9,5 +9,6 @@
   "all_new_groups_and_roles_disjoint": true,
   "heldout_generator": "StyleGANXL",
   "official_reference_used_for_training": false,
+  "source_family_disjoint_scope": "New CF fake model names only. FFHQ/LandscapesHQ real families repeat across roles; SID generator families are not certified disjoint. StyleGAN2 was already training data: this is not an entire StyleGAN-architecture holdout.",
   "parent_overlap_certified": false
 }

@@ -1,0 +1,9 @@
+# These files participate in byte-level experiment checksums. Do not normalize
+# CRLF/LF on checkout: Windows and Linux must see the exact locked evidence bytes.
+/results/v3/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/src/features.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/src/repost.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/src/augment.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/extract_v3.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/extract_v3_demo.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/train_v3.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

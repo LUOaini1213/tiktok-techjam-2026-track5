@@ -1,17 +1,70 @@
-SID-SET SUBSET TRAINED (not smoke)
+REPOSTGUARD V3 — DEVELOPMENT-LOCKED RESEARCH HEAD
+Post-deadline research iteration, 2026-10-09. Never submitted to Devpost.
+Non-commercial research: CommunityForensics-Small is CC-BY-NC-SA-4.0.
 
-feature_variant=fuse  (pre=768+forensic  proj=512+forensic  dino=384+forensic  fuse=896+forensic)
-CV AUC pre=n/a  proj=0.9776  dino=0.9244  fuse=0.9806
-n_train=96000  (rows = images x 6 views)
-n_val(test slice)=1400
-n_cal=600
-acc=0.9285714285714286
-auc=0.981233660130719
-fpr95=0.08194444444444444
-calibration=sigmoid
-Encoder: frozen openai/clip-vit-base-patch32 (ViT-B/32, ~88M) + frozen facebook/dinov2-small CLS (DINOv2-small, ~22M); well under 2B params.
-Labels: SID-Set 0=real, 1=AIGC-positive (includes tampered/label 2). WildFake unused.
-Training rows: clean + one paired official view per family (jpeg/blur/resize/noise/jitter); each row is the
-TTA-averaged embedding from embed_for_score (same path as infer). Tampered weight=5.
-Sigmoid-calibrated on group-disjoint 30% of val; metrics reported on the held-out 70%
-test slice only.
+Shipped artifact: artifacts/repostguard.joblib
+SHA256: 98673db537881a17c2301ea7d190b2b17596dbee55349c3d36211547e6792a3d
+Exact pre-test artifact: results/v3/frozen_pretest.joblib
+SHA256: 39f1b9c6cf6ddeb908232bf4faf7d089f03fa4b5f9416e3c870ba85508f09d92
+Only inherited seed/tampered_weight documentation fields differ at packaging.
+The fitted estimator, sigmoid, inference settings and review policy are identical.
+Verification: results/v3/preflight.json (estimator hash and exact sealed predictions).
+
+Features: frozen CLIP ViT-B/32 projection 512 + DINOv2-small CLS 384 + forensic 28 = 924.
+CLIP TTA: clean, JPEG quality 70, resize 0.5; DINOv2: clean input.
+CLIP snapshot: 3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268
+DINOv2 snapshot: ed25f3a31f01632728cabb09d1542f84ab7b0056
+Active vision parameters: 109905792.
+Full loaded encoders, including unused CLIP text tower: 173333889 (<2B).
+
+Head: standardised logistic regression, C=0.01, tampered_weight=1, seed=31009.
+Grouped 3-fold CV on 1200 training originals: mean AUC 0.9200636053.
+Selection: candidate, chosen on development only before new-test scoring.
+Sigmoid fitting and review-threshold selection use disjoint calibration originals.
+Calibration: 1004 originals, split into 502 probability-fit + 502 policy originals.
+Policy: AIGC >=0.9823067946423109; low signal <=0.0027857889143815865;
+        otherwise Needs review. Low signal is NOT proof of authenticity.
+Worst-view original-level calibration targets: FPR 1%, false clearance 5%,
+one-sided 95% bounds, specific to the calibration distribution only.
+
+Training: 12765 distinct originals, 78702 raw view rows, 65937 consistency rows.
+Sources: 11997 deduplicated legacy SID originals + 768 new CF originals;
+192 SID replay originals add views, not new identities.
+CF: multiple LatDiff generators, StyleGAN2 and BigGAN; FFHQ/LandscapesHQ reals.
+The whole VQDiffusion family is reserved for the new external test.
+Label 0=real; labels 1 (full synthesis) and 2 (tampered/local edits) are AI-positive.
+No protected reference is deliberately sampled for training/calibration/development.
+SID uses COCO captions and some COCO-derived edits: parent-photo overlap is not ruled out.
+
+Data manifest SHA256:
+23f8699e7d6f19472b219616cc72fcde2f98c40d5455c760f758540cdc9e6b82
+Feature-cache fingerprint:
+4536f48867d59a8d93fd9e8c6c2ab5ab5593af1e501949fc5bd002d2bc7e1695
+Historical audit: 16000 files represented 11997 unique files, with 19 train/val overlaps.
+Those old metrics remain historical diagnostics; see results/v2/ and docs/v2_history.md.
+
+MATCHED NEW TEST — descriptive mean across 19 conditions, same 448 originals:
+v2 mean AUC=0.9298689665; v3 mean AUC=0.9675070069.
+v2 accuracy at 0.5=0.8491541353; v3 accuracy at 0.5=0.9006109023.
+v3 FPR at 0.5=0.0686090226; AI recall at 0.5=0.8698308271.
+Shipped policy: mean FPR=0.0002349624; AI recall=0.2643327068;
+                review rate=0.8230733083. Abstentions are NOT correct detections.
+Fresh SID (256 originals): v2/v3 mean AUC=0.9845709550/0.9864823191.
+Held-out CF (192 originals): v2/v3 mean AUC=0.8402606451/0.9500582511.
+CF benchmark inputs are uniformly fit to 512x512 BEFORE named transformations;
+these scores do not describe native source files or an arbitrary upload population.
+
+OFFICIAL DEMONSTRATION REFERENCE — not a competition score:
+400 fixed-seed originals (200 COCO real, 200 DALL-E), six conditions, no selection.
+v2/v3 mean AUC=0.9013000000/0.9160083333.
+v3 shipped-policy mean FPR=0.0041666667, recall=0.2616666667, review=0.85125.
+At threshold 0.5, reference FPR worsens from 14.7% to 22.5%.
+SID local-edit mean AUC also regresses from 0.9821 to 0.9784.
+Small test groups, narrow generators and unknown pretraining/parent overlap limit claims.
+
+Full report, per-condition/paired intervals, error cases, immutable selection and
+completion checksums: results/v3/. No test-driven model or threshold change.
+Observed runtime: Python 3.13.14, torch 2.13.0+cpu, transformers 5.16.1,
+scikit-learn 1.9.0, NumPy 2.5.0, scipy 1.18.0, Pillow 11.3.0, joblib 1.5.3.
+Install in an isolated environment with requirements.txt and constraints-v3.txt.
+CPU inference defaults to four threads; no measured GPU performance is claimed.

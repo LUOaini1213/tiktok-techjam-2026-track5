@@ -94,6 +94,11 @@ Deployment installation after integrity/contract checks is not another model
 selection step: the development-selected artifact is installed unchanged. A final
 `evaluation_lock.json` checksums every generated report, preventing partial or stale
 reports from being treated as a completed evaluation.
+Byte-hashed sources and published v3 evidence use `.gitattributes -text`, preserving
+their original bytes instead of changing CRLF/LF during Git checkout. This is a
+packaging control, not a feature/model change. Clean-checkout tests verify every
+report checksum, the manifest/source feature fingerprint, the training-code hash,
+and equality of the frozen and shipped fitted estimator and inference policy.
 The pre-test bundle inherited top-level `seed=2026` and `tampered_weight=5` fields
 from v2, although the actual v3 recipe uses seed 31009 and weight 1 (recorded under
 `selection`). Packaging corrects these documentation fields only. The exact locked

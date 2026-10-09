@@ -40,7 +40,39 @@ Dataset images are not redistributed.
 ## Current results
 
 <!-- V3_RESULTS -->
-The v3 local CPU workflow is in progress. No new scores are claimed before it finishes.
+The development-selected model was frozen before these new tests were scored.
+Both models see the same originals and transformations within each comparison.
+
+| Test domain | Originals | Conditions | v2 mean AUC | v3 mean AUC | v3 review rate |
+|---|---:|---:|---:|---:|---:|
+| Fresh SID | 256 | 19 | 0.9846 | 0.9865 | 74.7% |
+| Held-out VQDiffusion + CF real images | 192 | 19 | 0.8403 | 0.9501 | 92.5% |
+| All newly sealed images | 448 | 19 | 0.9299 | 0.9675 | 82.3% |
+| COCO / DALL·E demonstration reference | 400 | 6 | 0.9013 | 0.9160 | 85.1% |
+
+These are descriptive means across conditions, not independent repeated trials.
+CF inputs are uniformly fit to 512x512 before evaluation. The reference is advisory,
+not a contest score, and is excluded from the sealed aggregate.
+
+At a common binary threshold of 0.5, sealed mean accuracy rises from **84.9% to
+90.1%** and FPR falls from 14.9% to 6.9%. The shipped conservative three-way policy
+instead gives mean FPR **0.0235%**, AI recall **26.4%**, and review rate **82.3%**.
+That is a low-coverage research policy, not an automatic moderation solution or a
+universal FPR guarantee. Its one sealed false flag must not be rounded into a claim
+of zero errors.
+
+There are regressions: SID local-edit mean AUC decreases from 0.9821 to 0.9784;
+reference FPR at 0.5 increases from 14.7% to 22.5%, despite better mean AUC.
+The reference quarter-scale condition still has AUC only 0.7924 and shipped-policy
+FPR 2.5%. No model or threshold was changed in response to these diagnostics.
+
+[Full matched report and plot](results/v3/REPORT.md) ·
+[per-condition confidence intervals](results/v3/evaluation.csv) ·
+[paired AUC-difference intervals](results/v3/paired_auc.csv) ·
+[deployment checks](results/v3/preflight.json).
+
+Local release checks: **68 passed, 2 skipped**; real CLI inference, unreadable-file
+fallback, the repost UI callback and a localhost HTTP demo smoke test all pass.
 <!-- /V3_RESULTS -->
 
 The mixed-data candidate uses 12,765 unique training originals; the new protocol has 1,004 calibration originals,
@@ -63,13 +95,16 @@ Install the pinned scikit-learn 1.9.0 dependency before loading the serialized h
 python -m venv .venv
 # Windows: .venv\Scripts\Activate.ps1
 # Linux/macOS: source .venv/bin/activate
-python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-python -m pip install -r requirements.txt
+python -m pip install torch==2.13.0 torchvision==0.28.0 --index-url https://download.pytorch.org/whl/cpu
+python -m pip install -r requirements.txt -c constraints-v3.txt
 python infer.py --input_dir samples --output preds.json
 python app.py
 ```
 
 The first run downloads the public CLIP and DINOv2 checkpoints, then caches them.
+The [constraints file](constraints-v3.txt) records the measured local package
+versions, not a complete cross-platform OS lockfile. Use an isolated environment;
+do not install both OpenCV GUI and headless variants into it.
 There is no cloud inference service or paid API requirement. CPU inference defaults
 to four threads; benchmark your own machine with `--threads N`. CUDA is detected
 automatically, but no GPU throughput claim is made here. `--no_tta` is a diagnostic
@@ -172,6 +207,23 @@ default; to reproduce a Community Forensics row, first apply the documented fit.
 See the matched v3 report for actual false flags, false clearances and 0.5-threshold
 false negatives. Historical [error analysis](results/v2/error_analysis.json) is kept
 separately, not relabelled as the current model.
+
+Representative current errors (source IDs and all scores are in
+[error_analysis.json](results/v3/error_analysis.json)):
+
+- Real reference `0_00902`: score 0.2619 clean, but 0.9952 after quarter-scale
+  down/up-sampling, producing a false AI flag. All five reference false flags occur
+  in that condition, on five distinct originals.
+- Synthetic reference `1_00215`: score 0.0083 clean and 0.0018 at JPEG-30. The latter
+  falls below the low-signal threshold, a false clearance. Low signal cannot certify
+  authenticity even when the conservative policy is used.
+- Held-out CF synthetic `024ad623…`: score 0.0180 clean and 0.0033 with noise 0.10.
+  Both are false negatives at 0.5, but both remain **Needs review** under the shipped
+  policy. An abstention is not a successful detection.
+
+These paired observations show failure patterns, not a proven causal attribution
+to a particular feature branch. Transformed rows of one original are correlated;
+they must not be counted as independent evidence for a safety guarantee.
 
 ## Video, authorship and tools
 

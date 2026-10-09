@@ -78,14 +78,14 @@ def score_image(
             "Thresholds are calibration-specific. Low signal is not proof of authenticity."), pred, work
 
 
-def main() -> None:
+def build_demo() -> gr.Interface:
     try:
         load_weights()
         status = "Weights loaded."
     except FileNotFoundError as e:
         status = str(e)
 
-    demo = gr.Interface(
+    return gr.Interface(
         fn=score_image,
         inputs=[
             gr.Image(type="pil", label="Image"),
@@ -102,6 +102,7 @@ def main() -> None:
             gr.Image(type="pil", label="Transformed view"),
         ],
         title="RepostGuard — AIGC detection after redistribution",
+        analytics_enabled=False,
         description=(
             "Research prototype based on the TikTok TechJam 2026 Track 5 brief; never submitted. "
             "Frozen CLIP ViT-B/32 + DINOv2-small + forensic stats + TTA. "
@@ -109,7 +110,10 @@ def main() -> None:
             "Needs review means the model abstains; a low score is not proof of authenticity."
         ),
     )
-    demo.launch()
+
+
+def main() -> None:
+    build_demo().launch()
 
 
 if __name__ == "__main__":

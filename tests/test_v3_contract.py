@@ -28,3 +28,10 @@ def test_inference_uses_artifact_tta_and_invalid_scores_fall_back(tmp_path,monke
 def test_invalid_cpu_threads_are_rejected_before_loading_weights(tmp_path):
     with pytest.raises(ValueError,match='positive'):
         infer.score_directory(tmp_path,tmp_path/'out.json',cpu_threads=0)
+
+
+def test_gradio_component_contract_builds_without_starting_a_server(monkeypatch):
+    import app
+    monkeypatch.setattr(app,'load_weights',lambda:None)
+    demo=app.build_demo()
+    assert len(demo.input_components)==7 and len(demo.output_components)==3

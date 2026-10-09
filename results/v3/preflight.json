@@ -1,0 +1,32 @@
+{
+  "shipped_model_sha256": "98673db537881a17c2301ea7d190b2b17596dbee55349c3d36211547e6792a3d",
+  "frozen_pretest_sha256": "39f1b9c6cf6ddeb908232bf4faf7d089f03fa4b5f9416e3c870ba85508f09d92",
+  "unchanged_estimator_sha1": "281d043a6b1a1e3afbe511267a2f05a1c820f567",
+  "selected": "candidate",
+  "metadata_only_corrections": {
+    "seed": {
+      "old": 2026,
+      "new": 31009
+    },
+    "tampered_weight": {
+      "old": 5.0,
+      "new": 1.0
+    }
+  },
+  "cli_contract": {
+    "rows": 3,
+    "bad_image_score": 0.5,
+    "wall_seconds_including_startup": 47.637217100011185
+  },
+  "pytest": "68 passed, 2 skipped, 126 warnings in 55.05s",
+  "ui_callback": {
+    "scenario": "double_repost",
+    "score": 0.042662331547965185,
+    "verdict": "Needs review  (AIGC score = 0.043)\nAI flag \u2265 0.982; low signal \u2264 0.003. Thresholds are calibration-specific. Low signal is not proof of authenticity.",
+    "http_status": 200,
+    "inputs": 7,
+    "outputs": 3
+  },
+  "evaluation_complete": true,
+  "test_used_for_selection": false
+}

@@ -11,6 +11,8 @@ import subprocess
 import sys
 import tempfile
 import time
+import socket
+from urllib.request import build_opener,ProxyHandler
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]; sys.path.insert(0,str(ROOT))
 import numpy as np
@@ -101,13 +103,25 @@ def main():
         label,score,view=app.score_image(im.copy(),100,0,0,1,1,'double_repost')
     assert np.isfinite(score) and 0<=score<=1 and view.mode=='RGB'
     assert 'Thresholds are calibration-specific' in label
+    interface=app.build_demo()
+    assert len(interface.input_components)==7 and len(interface.output_components)==3
+    with socket.socket() as listener:
+        listener.bind(('127.0.0.1',0)); port=listener.getsockname()[1]
+    os.environ['NO_PROXY']=os.environ.get('NO_PROXY','')+',127.0.0.1,localhost'
+    try:
+        _,local_url,_=interface.launch(server_name='127.0.0.1',server_port=port,
+            prevent_thread_lock=True,quiet=True,share=False,inbrowser=False)
+        with build_opener(ProxyHandler({})).open(local_url,timeout=20) as response:
+            assert response.status==200 and b'RepostGuard' in response.read()
+    finally:
+        interface.close()
     result=dict(shipped_model_sha256=sha(shipped),frozen_pretest_sha256=selection['model_sha256'],
                 unchanged_estimator_sha1=estimator_hash,selected=selection['selected'],
                 metadata_only_corrections=dict(seed=dict(old=meta['seed'],new=deployed['meta']['seed']),
                     tampered_weight=dict(old=meta['tampered_weight'],new=deployed['meta']['tampered_weight'])),
                 cli_contract=dict(rows=3,bad_image_score=.5,wall_seconds_including_startup=contract_seconds),
                 pytest=re.findall(r'\d+ passed[^\r\n]*',tests.stdout)[-1],
-                ui_callback=dict(scenario='double_repost',score=score,verdict=label),
+                ui_callback=dict(scenario='double_repost',score=score,verdict=label,http_status=200,inputs=7,outputs=3),
                 evaluation_complete=True,test_used_for_selection=False)
     (reports/'preflight.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
     print(json.dumps(result,indent=2),flush=True)

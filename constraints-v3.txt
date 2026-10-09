@@ -1,0 +1,23 @@
+# Observed local CPU runtime, Python 3.13.14 (2026-10-09).
+# Install torch/torchvision from the CPU wheel index first. PEP 440 public
+# versions below also accept their +cpu builds. This is not a full OS lockfile.
+torch==2.13.0
+torchvision==0.28.0
+transformers==5.16.1
+safetensors==0.8.0
+scikit-learn==1.9.0
+joblib==1.5.3
+numpy==2.5.0
+Pillow==11.3.0
+opencv-python-headless==5.0.0.93
+scipy==1.18.0
+pandas==3.0.5
+matplotlib==3.11.0
+pyarrow==25.0.1
+threadpoolctl==3.6.0
+tqdm==4.69.0
+PyYAML==6.0.3
+huggingface-hub==1.26.0
+datasets==5.0.1
+gradio==6.26.0
+pytest==9.1.1

@@ -31,6 +31,7 @@ from src.io_utils import enable_utf8_stdout
 from src.augment import PAIR_FAMILIES
 from src.features import BASE_DIMS, DINO_MODEL_ID, FEATURE_VARIANTS, feature_dim_for_variant
 from src.model import save_bundle
+from src.encoder_revisions import matching_cache_snapshots
 from src.train_signal import fit_with_training_signal, positive_proba
 
 
@@ -207,6 +208,13 @@ def main() -> None:
     if not train_path.exists():
         raise SystemExit("Run scripts/extract_features.py --split train --augment first")
 
+    cache_paths=[train_path,*(args.extra_features or [])]
+    if val_path.exists(): cache_paths.append(val_path)
+    cache_maps=[]
+    for path in cache_paths:
+        with np.load(path) as cache:
+            cache_maps.append({"encoder_snapshots":cache["encoder_snapshots"]} if "encoder_snapshots" in cache else {})
+    snapshots=matching_cache_snapshots(cache_maps,cfg["clip_model_id"])
     Xtr, ytr, sidtr, vpi = load_npz(train_path)
     extra_names = []
     if args.extra_features:
@@ -308,6 +316,7 @@ def main() -> None:
 
     meta = {
         "clip_model_id": cfg["clip_model_id"],
+        "encoder_snapshots": snapshots,
         "use_forensic": cfg["use_forensic"],
         "use_tta": cfg["use_tta"],
         "tta_jpeg_quality": cfg["tta_jpeg_quality"],

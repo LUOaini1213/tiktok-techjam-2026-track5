@@ -1,5 +1,9 @@
 seed: 2026
 clip_model_id: openai/clip-vit-base-patch32
+# Immutable checkpoints recorded by the released V3/V4 bundles.
+encoder_snapshots:
+  openai/clip-vit-base-patch32: 3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268
+  facebook/dinov2-small: ed25f3a31f01632728cabb09d1542f84ab7b0056
 train_per_class: 8000
 val_per_class: 1000
 batch_size: 8

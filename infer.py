@@ -26,6 +26,7 @@ from src.config import load_config, model_path
 from src.features import DEFAULT_FEATURE_VARIANT, feature_dim_for_variant
 from src.io_utils import enable_utf8_stdout, list_images, open_image
 from src.model import load_bundle
+from src.encoder_revisions import validate_snapshots, EncoderLoadError
 from src.score import embed_for_score, score_from_embed
 
 
@@ -59,13 +60,14 @@ def score_directory(
     threads = int(cpu_threads if cpu_threads is not None else cfg.get('cpu_threads', 4))
     if threads < 1:
         raise ValueError('cpu_threads must be positive')
-    if not torch.cuda.is_available():
-        torch.set_num_threads(threads)
     bundle = load_bundle(weights or model_path(cfg))
     meta = bundle.get("meta", {})
     model_id = meta.get("clip_model_id", cfg["clip_model_id"])
     use_forensic = meta.get("use_forensic", cfg["use_forensic"])
     variant = meta.get("feature_variant", DEFAULT_FEATURE_VARIANT)
+    snapshots = validate_snapshots(meta.get("encoder_snapshots"), model_id, variant)
+    if not torch.cuda.is_available():
+        torch.set_num_threads(threads)
     if use_tta is None:
         use_tta = bool(meta.get("use_tta", cfg["use_tta"]))
 
@@ -109,8 +111,11 @@ def score_directory(
                 tta_jpeg_quality=meta.get("tta_jpeg_quality", cfg["tta_jpeg_quality"]),
                 tta_resize_scale=meta.get("tta_resize_scale", cfg["tta_resize_scale"]),
                 variant=variant,
+                encoder_snapshots=snapshots,
             )
             pred = score_from_embed(bundle, feat)
+        except EncoderLoadError:
+            raise  # shared checkpoint failure must not become successful fallback rows
         except Exception:  # one unreadable image must not abort the whole run
             print(f"WARNING: failed to score {path}; emitting fallback pred.", file=sys.stderr)
             traceback.print_exc()

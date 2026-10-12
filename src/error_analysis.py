@@ -43,6 +43,7 @@ def collect_errors(
         feat = embed_for_score(
             im,
             model_id=meta.get("clip_model_id", cfg["clip_model_id"]),
+            encoder_snapshots=meta.get("encoder_snapshots"),
             use_forensic=meta.get("use_forensic", True),
             use_tta=use_tta,
             variant=variant,
@@ -52,6 +53,7 @@ def collect_errors(
         feat_j = embed_for_score(
             jpeg,
             model_id=meta.get("clip_model_id", cfg["clip_model_id"]),
+            encoder_snapshots=meta.get("encoder_snapshots"),
             use_forensic=meta.get("use_forensic", True),
             use_tta=use_tta,
             variant=variant,

@@ -9,9 +9,10 @@ from PIL import Image
 
 from .features import DEFAULT_FEATURE_VARIANT, embed_one, embed_one_dual
 from .model import predict_proba
+from .encoder_revisions import encoder_scope
 
 
-def embed_for_score(
+def _embed_for_score(
     image: Image.Image,
     model_id: str,
     use_forensic: bool = True,
@@ -49,7 +50,7 @@ def embed_for_score(
     )
 
 
-def embed_for_score_dual(
+def _embed_for_score_dual(
     image: Image.Image,
     model_id: str,
     use_forensic: bool = True,
@@ -75,3 +76,18 @@ def score_from_embed(bundle: dict[str, Any], feat: np.ndarray) -> float:
     if not np.isfinite(pred):
         raise ValueError("Non-finite model score")
     return min(1.0, max(0.0, pred))
+
+
+def embed_for_score(image, model_id, use_forensic=True, use_tta=True,
+                    tta_jpeg_quality=70, tta_resize_scale=0.5,
+                    variant=DEFAULT_FEATURE_VARIANT, crops=0, *, encoder_snapshots=None):
+    with encoder_scope(encoder_snapshots, model_id, variant):
+        return _embed_for_score(image, model_id, use_forensic, use_tta,
+                                tta_jpeg_quality, tta_resize_scale, variant, crops)
+
+
+def embed_for_score_dual(image, model_id, use_forensic=True, use_tta=True,
+                         tta_jpeg_quality=70, tta_resize_scale=0.5, *, encoder_snapshots=None):
+    with encoder_scope(encoder_snapshots, model_id, "fuse"):
+        return _embed_for_score_dual(image, model_id, use_forensic, use_tta,
+                                     tta_jpeg_quality, tta_resize_scale)

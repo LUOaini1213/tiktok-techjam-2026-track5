@@ -36,6 +36,7 @@ from src.data import records_from_folders
 from src.features import FEATURE_VARIANTS, get_device
 from src.io_utils import enable_utf8_stdout, open_image
 from src.score import embed_for_score_dual
+from src.encoder_revisions import validate_snapshots, snapshot_json, cache_snapshots, matching_cache_snapshots
 from src.train_signal import sid_label_from_path
 
 
@@ -57,7 +58,7 @@ def _atomic_savez(path: Path, **arrays) -> None:
     os.replace(tmp, path)
 
 
-def _load_partial(part_path: Path, views_per_image: int, n_rows_total: int, lo: int):
+def _load_partial(part_path: Path, views_per_image: int, n_rows_total: int, lo: int, snapshots=None, model_id="openai/clip-vit-base-patch32"):
     """Return (chunks, labels, sids, next_image) from a compatible partial, else fresh."""
     fresh = ({v: [] for v in FEATURE_VARIANTS}, [], [], lo)
     if not part_path.exists():
@@ -70,6 +71,8 @@ def _load_partial(part_path: Path, views_per_image: int, n_rows_total: int, lo: 
         if any(f"X_{v}" not in d.files for v in FEATURE_VARIANTS):
             print("partial lacks a feature variant; restarting this shard from scratch")
             return fresh
+        if snapshots is not None and cache_snapshots(d,model_id)!=snapshots:
+            raise ValueError("Partial cache uses different encoder snapshots")
         n_done = int(d["n_images_done"][0])
         chunks = {v: [d[f"X_{v}"]] for v in FEATURE_VARIANTS}
         print(f"resuming from partial checkpoint: {n_done - lo} images already embedded")
@@ -80,6 +83,7 @@ def _load_partial(part_path: Path, views_per_image: int, n_rows_total: int, lo: 
 
 
 def extract_split(cfg, split: str, augment: bool, checkpoint_every: int, shard: str | None, out: Path | None) -> Path:
+    snapshots=validate_snapshots(cfg.get("encoder_snapshots"),cfg["clip_model_id"],"fuse",allow_legacy=False)
     device = get_device()
     rows = [r for r in records_from_folders(cfg["data_dir"]) if r["split"] == split]
     if not rows:
@@ -102,7 +106,7 @@ def extract_split(cfg, split: str, augment: bool, checkpoint_every: int, shard: 
     out.parent.mkdir(parents=True, exist_ok=True)
     part_path = out.with_suffix(".partial.npz")
 
-    feat_chunks, labels, sids, start = _load_partial(part_path, views_per_image, len(rows), lo)
+    feat_chunks, labels, sids, start = _load_partial(part_path, views_per_image, len(rows), lo, snapshots, cfg["clip_model_id"])
 
     def checkpoint(n_images_done: int) -> None:
         _atomic_savez(
@@ -113,6 +117,7 @@ def extract_split(cfg, split: str, augment: bool, checkpoint_every: int, shard: 
             views_per_image=np.array([views_per_image]),
             n_rows_total=np.array([len(rows)]),
             n_images_done=np.array([n_images_done]),
+            encoder_snapshots=snapshot_json(snapshots),
         )
 
     for i in tqdm(range(start, hi), initial=start - lo, total=hi - lo, desc=f"feat-{split}[{i_shard}/{n_shard}]"):
@@ -130,6 +135,7 @@ def extract_split(cfg, split: str, augment: bool, checkpoint_every: int, shard: 
                 use_tta=use_tta,
                 tta_jpeg_quality=cfg["tta_jpeg_quality"],
                 tta_resize_scale=cfg["tta_resize_scale"],
+                encoder_snapshots=snapshots,
             )
             for v in views
         ]
@@ -151,6 +157,7 @@ def extract_split(cfg, split: str, augment: bool, checkpoint_every: int, shard: 
         views_per_image=np.array([views_per_image]),
         shard_start=np.array([lo]),
         n_rows_total=np.array([len(rows)]),
+        encoder_snapshots=snapshot_json(snapshots),
     )
     if part_path.exists():
         part_path.unlink()
@@ -161,6 +168,8 @@ def extract_split(cfg, split: str, augment: bool, checkpoint_every: int, shard: 
 def merge(parts: list[Path], out: Path) -> Path:
     """Concatenate shard npz files in row order; refuse to write a short cache."""
     loaded = sorted((np.load(p) for p in parts), key=lambda d: int(d["shard_start"][0]))
+    cfg=load_config()
+    snapshots=matching_cache_snapshots(loaded,cfg["clip_model_id"])
     total = int(loaded[0]["n_rows_total"][0])
     vpi = int(loaded[0]["views_per_image"][0])
     covered = 0
@@ -181,6 +190,7 @@ def merge(parts: list[Path], out: Path) -> Path:
         y=np.concatenate([d["y"] for d in loaded]),
         sid=np.concatenate([d["sid"] for d in loaded]),
         views_per_image=np.array([vpi]),
+        encoder_snapshots=snapshot_json(snapshots),
     )
     print(f"Wrote {out}: {covered} images x {vpi} views, " + " ".join(f"{v}={feats[v].shape[1]}-D" for v in FEATURE_VARIANTS))
     return out

@@ -3,6 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 import pytest
+from src.frozen_evidence import historical_source
 
 ROOT=Path(__file__).resolve().parents[1]
 REPORT=ROOT/'results/v4'
@@ -17,7 +18,8 @@ def test_v4_pretest_lock_and_completed_reports():
     assert not lock['test_used_for_selection']
     selection=json.loads((REPORT/'selection.json').read_text(encoding='utf-8'))
     assert not selection['final_policy_groups_used_for_head_selection']
-    for name,digest in lock['sha256'].items(): assert sha(ROOT/name)==digest,name
+    for name,digest in lock['sha256'].items():
+        assert hashlib.sha256(historical_source(name,digest)).hexdigest()==digest,name
     evidence=json.loads((REPORT/'evaluation_lock.json').read_text(encoding='utf-8'))
     assert not evidence['test_used_for_selection']
     assert sha(REPORT/'pretest_lock.json')==evidence['pretest_lock_sha256']
@@ -55,7 +57,7 @@ def test_v4_packaging_metadata_when_complete():
     if not (REPORT/'preflight.json').exists(): pytest.skip('V4 deployment preflight not yet published')
     import joblib
     report=json.loads((REPORT/'preflight.json').read_text(encoding='utf-8'))
-    assert sha(ROOT/'scripts/verify_v4.py')==report['release_verification_code_sha256']
+    assert hashlib.sha256(historical_source('scripts/verify_v4.py',report['release_verification_code_sha256'])).hexdigest()==report['release_verification_code_sha256']
     packaged=joblib.load(REPORT/'repostguard.joblib'); meta=packaged['meta']
     assert meta['calibration_fit_groups']==meta['calibration_policy_groups']==640
     assert meta['head_selected_before_final_policy'] and meta['final_policy_calibrated']

@@ -228,6 +228,17 @@ and a warning on stderr; that fallback is not a successful model prediction. Emp
 or missing input folders produce `[]`. Thresholds live in model metadata, so the
 machine-readable contract remains exactly `{image_path,pred}`.
 
+## Encoder checkpoint integrity
+
+Released V3/V4 bundles now pass their recorded immutable CLIP/DINO SHAs to both
+model and processor loading. Symbolic/missing entries in an existing snapshot map
+fail before scoring; shared encoder-loading failures do not become successful 0.5
+fallback rows. Bundles without snapshots remain explicitly warned, unpinned legacy
+runs. New training requires matching snapshot metadata in feature caches rather
+than guessing from the local Hub cache. Historical reports and head bytes are
+unchanged; this is offline integrity validation, not a new accuracy or GPU result.
+See [runtime policy and historical-source audit](docs/encoder_revision_runtime.md).
+
 ## Model and compute
 
 Frozen OpenAI CLIP ViT-B/32 projected features (512-D), frozen DINOv2-small CLS

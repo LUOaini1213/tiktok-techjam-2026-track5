@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "historical_source_commit": "1249bc1ecdbd050a03ec6071dcb7708adf683a4f",
+  "validation_scope": "Offline identity, synthetic cache, mocked loader and preserved historical receipt checks; no actual encoder forward or new detection/performance measurement.",
+  "python": "3.13.14",
+  "tests": {
+    "passed": 74,
+    "skipped": 0,
+    "command": "python -m pytest tests/test_encoder_revisions.py tests/test_frozen_source.py tests/test_v3_evidence.py tests/test_v4_evidence.py tests/test_v3_contract.py tests/test_v4.py tests/test_extra_views.py tests/test_feature_variants.py -q",
+    "offline_environment": [
+      "HF_HUB_OFFLINE=1",
+      "TRANSFORMERS_OFFLINE=1",
+      "CUDA_VISIBLE_DEVICES="
+    ]
+  },
+  "historical_receipts": {
+    "checks": 45,
+    "archived_source_files": 9,
+    "normal_python": "PASS",
+    "optimized_python": "PASS",
+    "snapshots_byte_equal_recorded_git_source": true
+  },
+  "preserved": [
+    "artifacts/repostguard.joblib",
+    "results/v2/**",
+    "results/v3/**",
+    "results/v4/**"
+  ],
+  "code_sha256": {
+    "src/encoder_revisions.py": "61b7dd61e8d09c0bf3e50d45f2150009d9cbc44fbd6725bbd8b8d290f049f876",
+    "src/features.py": "1cace3d859513b72677a4f95f8bd63a51454ba518a2e33a6b124c9a31488e611",
+    "src/score.py": "ccf4b948521c935857024a490a1619a0c1ec29e7829b6480809f5cb0fd9bd0d3",
+    "src/frozen_evidence.py": "d0118fa45ea2276d1cbdbb8348ee022a381a2b6e590da83d367f878b80f9b7f9",
+    "infer.py": "342208d39dae26ace09d062805e6a9203d8ff5c66ccf7940d39cb24bba172745",
+    "app.py": "d5cf08d4c872ba51fda50cf5ea1fbfe4095c2f05ce40430342c7c82a5ce058f1",
+    "scripts/check_encoder_receipts.py": "90402ef90b43b82ea19c5cfd680ab6e8bd0aec6c13b0857abe4801aac006097e"
+  },
+  "encoder_downloads": 0,
+  "actual_encoder_forwards": 0,
+  "training_runs": 0,
+  "gpu_runs": 0,
+  "limits": [
+    "Legacy bundles without snapshots remain explicitly warned/unpinned.",
+    "Unversioned historical feature caches are not retroactively certified.",
+    "No new inference equivalence, accuracy, CPU/GPU latency or generalisation result is claimed."
+  ]
+}

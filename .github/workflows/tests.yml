@@ -20,6 +20,10 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install torch==2.13.0 torchvision==0.28.0 --index-url https://download.pytorch.org/whl/cpu
           python -m pip install -r requirements.txt pytest -c constraints-v3.txt
+      - name: Historical source and artifact receipts (no model load)
+        run: |
+          python scripts/check_encoder_receipts.py
+          python -O scripts/check_encoder_receipts.py
       - name: Run tests (dataset-dependent tests skip on a clean checkout)
         env:
           OMP_NUM_THREADS: "2"

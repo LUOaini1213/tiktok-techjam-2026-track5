@@ -16,6 +16,8 @@ from sklearn.model_selection import GroupKFold, train_test_split
 from sklearn.metrics import roc_auc_score,brier_score_loss
 from threadpoolctl import threadpool_limits
 from src.model import load_bundle, save_bundle, ProbabilityBlend
+from src.config import load_config
+from src.encoder_revisions import matching_cache_snapshots
 from src.model_v4 import FeatureHead
 from src.decision import select_policy, operating_metrics
 from src.decision_v4 import conditionwise_policy, original_metrics,numerical_guard
@@ -115,8 +117,13 @@ def main():
         validate_lock(); print('Model/policy already locked; refusing test-driven refit',flush=True); return
     from scripts.validate_v4 import validate
     validate()
-    fp=source_fingerprint(DATA/'manifest.json')
     cal,dev,replay,new=(load_cache(r) for r in ('cal','dev','replay','train'))
+    cfg=load_config()
+    with np.load(ROOT/'artifacts/features_train.npz') as legacy, np.load(ROOT/'artifacts/v3/train.npz') as v3:
+        snapshots=matching_cache_snapshots([cal,dev,replay,new,legacy,v3],cfg['clip_model_id'],'v4_local')
+    base_snapshots=load_bundle(ROOT/'artifacts/repostguard.joblib')['meta'].get('encoder_snapshots')
+    if snapshots!=base_snapshots: raise RuntimeError('Retained V3 classifier and new caches use different encoder snapshots')
+    fp=source_fingerprint(DATA/'manifest.json',snapshots)
     if any(str(d['fingerprint'])!=fp for d in (cal,dev,replay,new)): raise RuntimeError('Mixed feature provenance')
     strata=cal['domain']+':'+cal['sid'].astype(str)
     unique,first=np.unique(cal['group'],return_index=True)
@@ -172,7 +179,7 @@ def main():
                             requires_local_features='local' in name,
                             final_policy_calibrated=False,
                             calibration_scope='clean and crop_resize_jpeg only; pointwise, not simultaneous',
-                            manifest_sha256=sha(DATA/'manifest.json'),feature_cache_fingerprint=fp,
+                            manifest_sha256=sha(DATA/'manifest.json'),feature_cache_fingerprint=fp,encoder_snapshots=snapshots,
                             training_code_sha256=sha(Path(__file__)),
                             training_data='SID + CommunityForensics-Small; source-normalized cached global training, explicit 640-source local replay/new-training subset',
                             weighting='equal SID/CF subclass strata and per-original weights; not a fixed 5x tampered weight',

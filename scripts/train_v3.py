@@ -7,7 +7,6 @@ import sys
 import time
 import platform
 from importlib.metadata import version
-from huggingface_hub import try_to_load_from_cache
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
@@ -22,6 +21,8 @@ from scripts.train import calibrate
 from scripts.audit_v3 import identity
 from src.data import records_from_folders
 from src.io_utils import open_image
+from src.config import load_config
+from src.encoder_revisions import matching_cache_snapshots
 
 BASE=ROOT/'artifacts/v3'
 REPORT=ROOT/'results/v3'
@@ -73,6 +74,9 @@ def main():
     manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
     cached=[r for r in manifest['records'] if r['role']=='cached_train']
     legacy=np.load(ROOT/'artifacts/features_train.npz')
+    cfg=load_config()
+    with np.load(BASE/'train.npz') as new_train, np.load(BASE/'cal.npz') as calibration, np.load(BASE/'dev.npz') as development:
+        encoder_snapshots=matching_cache_snapshots([legacy,new_train,calibration,development],cfg['clip_model_id'])
     vpi=int(legacy['views_per_image'][0]); indices=np.array([r['cache_index'] for r in cached])
     raw_idx=(indices[:,None]*vpi+np.arange(vpi)).ravel()
     X=legacy['X_fuse'][raw_idx].astype(np.float32)
@@ -114,8 +118,6 @@ def main():
     assert str(cal['fingerprint'])==cache_fingerprint, 'Mixed train/cal feature pipelines'
     if not np.isfinite(cal['X']).all(): raise ValueError('Non-finite calibration features')
     runtime=dict(python=platform.python_version(), **{p:version(p) for p in ('numpy','scipy','scikit-learn','torch','transformers','Pillow','joblib')})
-    encoder_snapshots={mid:Path(try_to_load_from_cache(mid,'config.json')).parent.name
-                       for mid in ('openai/clip-vit-base-patch32','facebook/dinov2-small')}
     fit_groups,policy_groups=train_test_split(uy,test_size=.5,random_state=31009,stratify=cal['y'][first])
     fit_idx=np.isin(cal['group'],fit_groups); policy_idx=np.isin(cal['group'],policy_groups)
     assert not set(fit_groups)&set(policy_groups)

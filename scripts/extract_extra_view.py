@@ -42,6 +42,7 @@ from src.data import records_from_folders
 from src.features import FEATURE_VARIANTS
 from src.io_utils import enable_utf8_stdout, open_image
 from src.score import embed_for_score_dual
+from src.encoder_revisions import validate_snapshots, snapshot_json, matching_cache_snapshots
 from src.train_signal import sid_label_from_path
 
 # Parameter pool per family, drawn per image from a deterministic per-image RNG so the
@@ -75,6 +76,8 @@ def parse_args() -> argparse.Namespace:
 def merge(parts: list[Path], out: Path) -> Path:
     """Concatenate shard npz files in the order given -- shards are contiguous row ranges."""
     loaded = [np.load(p) for p in parts]
+    cfg=load_config()
+    snapshots=matching_cache_snapshots(loaded,cfg["clip_model_id"])
     starts = [int(d["shard_start"][0]) for d in loaded]
     if starts != sorted(starts):
         order = np.argsort(starts)
@@ -94,6 +97,7 @@ def merge(parts: list[Path], out: Path) -> Path:
         y=np.concatenate([d["y"] for d in loaded]),
         sid=np.concatenate([d["sid"] for d in loaded]),
         views_per_image=np.array([1]),
+        encoder_snapshots=snapshot_json(snapshots),
     )
     print(f"Wrote {out} ({covered} rows)")
     return out
@@ -107,6 +111,7 @@ def main() -> None:
         merge(args.merge, args.out)
         return
 
+    snapshots=validate_snapshots(cfg.get("encoder_snapshots"),cfg["clip_model_id"],"fuse",allow_legacy=False)
     i_shard, n_shard = (int(x) for x in args.shard.split("/"))
     rows = [r for r in records_from_folders(cfg["data_dir"]) if r["split"] == args.split]
     if not rows:
@@ -136,6 +141,7 @@ def main() -> None:
             use_tta=bool(cfg.get("use_tta", True)),
             tta_jpeg_quality=cfg["tta_jpeg_quality"],
             tta_resize_scale=cfg["tta_resize_scale"],
+            encoder_snapshots=snapshots,
         )
         for v in FEATURE_VARIANTS:
             feats[v].append(dual[v])
@@ -151,6 +157,7 @@ def main() -> None:
         views_per_image=np.array([1]),
         shard_start=np.array([lo]),
         n_rows_total=np.array([len(rows)]),
+        encoder_snapshots=snapshot_json(snapshots),
     )
     print(f"Wrote {args.out} rows={hi - lo} range=[{lo},{hi})")
 

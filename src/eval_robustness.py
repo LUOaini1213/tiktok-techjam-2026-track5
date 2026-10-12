@@ -15,6 +15,7 @@ from .features import DEFAULT_FEATURE_VARIANT
 from .io_utils import open_image
 from .model import load_bundle
 from .score import embed_for_score, score_from_embed
+from .encoder_revisions import validate_snapshots
 
 
 def balanced_val_slice(rows: list[dict], max_images: int | None) -> list[dict]:
@@ -143,6 +144,7 @@ def evaluate_robustness(
     bundle = load_bundle(weights or model_path(cfg))
     meta = bundle["meta"]
     variant = meta.get("feature_variant", DEFAULT_FEATURE_VARIANT)
+    snapshots=validate_snapshots(meta.get("encoder_snapshots"),meta.get("clip_model_id",cfg["clip_model_id"]),variant)
     rows = [r for r in records_from_folders(cfg["data_dir"]) if r["split"] == "val"]
 
     # If a calibration/test split exists, evaluate ONLY on the held-out test images so the
@@ -192,6 +194,7 @@ def evaluate_robustness(
                     tta_jpeg_quality=cfg["tta_jpeg_quality"],
                     tta_resize_scale=cfg["tta_resize_scale"],
                     variant=variant,
+                    encoder_snapshots=snapshots,
                     crops=crops,
                 )
                 scores.append(score_from_embed(bundle, feat))

@@ -6,6 +6,7 @@ import os
 from contextlib import contextmanager
 from pathlib import Path
 import numpy as np
+from src.encoder_revisions import feature_fingerprint
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / 'data/v4'
@@ -39,11 +40,14 @@ def save_npz(destination, **values):
     np.savez_compressed(temp, **values); os.replace(temp, destination)
 
 
-def source_fingerprint(manifest):
+def source_fingerprint(manifest, snapshots=None):
     sources = ('src/features.py', 'src/augment.py', 'src/repost.py',
-               'src/features_v4.py', 'src/forensic_v4_fast.py', 'scripts/extract_v4.py')
-    return hashlib.sha256(Path(manifest).read_bytes() +
-        b''.join((ROOT / name).read_bytes() for name in sources)).hexdigest()
+               'src/features_v4.py', 'src/forensic_v4_fast.py', 'scripts/extract_v4.py',
+               'src/score.py', 'src/encoder_revisions.py')
+    if snapshots is None:
+        raise ValueError('Pinned encoder snapshots are required for new feature-cache fingerprints')
+    return feature_fingerprint(Path(manifest).read_bytes() +
+        b''.join((ROOT / name).read_bytes() for name in sources), snapshots)
 
 
 def preserve_v3():

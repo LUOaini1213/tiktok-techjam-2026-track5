@@ -12,6 +12,9 @@ from src.augment import EVAL_PRESETS, apply_named
 from src.repost import CHAINS, apply_chain
 from src.io_utils import open_image
 from src.features_v4 import embed_v4_batch, V4_DIM
+from src.encoder_revisions import encoder_scope, validate_snapshots, snapshot_json, cache_snapshots
+from src.config import load_config
+from src.frozen_evidence import historical_source
 from scripts.v4_common import DATA,CACHE,REPORT,read_json,save_npz,source_fingerprint,preserve_v3,sha
 
 
@@ -31,7 +34,7 @@ def view_set(image, role):
 def validate_lock():
     lock=read_json(REPORT/'pretest_lock.json')
     for name,digest in lock['sha256'].items():
-        if sha(ROOT/name)!=digest: raise RuntimeError(f'Pretest lock changed: {name}')
+        historical_source(name,digest)
 
 
 def main():
@@ -41,7 +44,8 @@ def main():
     if a.batch_size<1: raise ValueError('Positive batch size required')
     preserve_v3(); manifest=read_json(DATA/'manifest.json')
     if not manifest['complete']: raise RuntimeError('Unfrozen dataset')
-    fp=source_fingerprint(DATA/'manifest.json')
+    cfg=load_config(); snapshots=validate_snapshots(cfg.get('encoder_snapshots'),cfg['clip_model_id'],'v4_local',allow_legacy=False)
+    fp=source_fingerprint(DATA/'manifest.json',snapshots)
     for role in a.roles.split(','):
         if role=='test': validate_lock()
         records=[r for r in manifest['records'] if r['role']==role]
@@ -53,6 +57,7 @@ def main():
             if target.exists():
                 with np.load(target) as d:
                     if str(d['fingerprint'])!=fp: raise RuntimeError(f'Stale cache {target}')
+                    if cache_snapshots(d,cfg['clip_model_id'],'v4_local')!=snapshots: raise RuntimeError('Mixed encoder snapshots')
                     X=d['X']; names=d['name']
             else:
                 image=open_image(ROOT/r['path'])
@@ -62,10 +67,14 @@ def main():
                 for name,work in view_set(image,role):
                     names.append(name); pending.append(work)
                     if len(pending)==a.batch_size:
-                        pieces.append(embed_v4_batch(pending)); pending=[]
-                if pending: pieces.append(embed_v4_batch(pending))
+                        with encoder_scope(snapshots,cfg['clip_model_id'],'v4_local'):
+                            pieces.append(embed_v4_batch(pending,model_id=cfg['clip_model_id']))
+                        pending=[]
+                if pending:
+                    with encoder_scope(snapshots,cfg['clip_model_id'],'v4_local'):
+                        pieces.append(embed_v4_batch(pending,model_id=cfg['clip_model_id']))
                 X=np.concatenate(pieces); names=np.array(names)
-                save_npz(target,X=X,name=names,fingerprint=fp)
+                save_npz(target,X=X,name=names,fingerprint=fp,encoder_snapshots=snapshot_json(snapshots))
             if X.shape[1]!=V4_DIM or not np.isfinite(X).all(): raise RuntimeError('Invalid feature cache')
             chunks.append(X); n=len(X)
             for key,item in [('y',r['label']),('sid',r['sid']),('group',r['group']),('domain',r['dataset']),('path',r['path'])]:
@@ -74,7 +83,7 @@ def main():
             if (i+1)%16==0 or i+1==len(records):
                 elapsed=time.monotonic()-start
                 print(f'{role} {i+1}/{len(records)}; {elapsed:.1f}s; ETA {(len(records)-i-1)*elapsed/(i+1):.1f}s',flush=True)
-        save_npz(CACHE/f'{role}.npz',X=np.concatenate(chunks),fingerprint=fp,**{k:np.asarray(v) for k,v in values.items()})
+        save_npz(CACHE/f'{role}.npz',X=np.concatenate(chunks),fingerprint=fp,encoder_snapshots=snapshot_json(snapshots),**{k:np.asarray(v) for k,v in values.items()})
         print(f'Saved {role}: {sum(len(x) for x in chunks)} rows',flush=True)
 
 

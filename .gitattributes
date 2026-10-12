@@ -25,3 +25,17 @@
 /src/forensic_v4_fast.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 /scripts/eval_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 /scripts/verify_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+
+# Historical audit copies are data; preserve their exact original bytes.
+/docs/frozen-source/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/src/encoder_revisions.py text eol=lf
+/src/frozen_evidence.py text eol=lf
+
+# The new offline runtime receipt refers to platform-stable source bytes.
+/infer.py text eol=lf
+/app.py text eol=lf
+/scripts/check_encoder_receipts.py text eol=lf
+/tests/test_encoder_revisions.py text eol=lf
+/tests/test_frozen_source.py text eol=lf
+/docs/encoder_revision_runtime.md text eol=lf
+/results/runtime_integrity/** text eol=lf

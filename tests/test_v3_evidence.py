@@ -4,6 +4,7 @@ import hashlib
 import json
 
 import joblib
+from src.frozen_evidence import historical_source
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORTS = ROOT / 'results/v3'
@@ -34,9 +35,9 @@ def test_published_source_bytes_match_feature_and_training_provenance():
     sources = ('src/features.py', 'src/repost.py', 'src/augment.py',
                'scripts/extract_v3.py')
     payload = (REPORTS / 'data_manifest.json').read_bytes()
-    payload += b''.join((ROOT / name).read_bytes() for name in sources)
+    payload += b''.join(historical_source(name) for name in sources)
     assert hashlib.sha256(payload).hexdigest() == meta['feature_cache_fingerprint']
-    assert sha(ROOT / 'scripts/train_v3.py') == meta['training_code_sha256']
+    assert hashlib.sha256(historical_source('scripts/train_v3.py', meta['training_code_sha256'])).hexdigest() == meta['training_code_sha256']
 
 
 def test_packaged_head_preserves_the_frozen_estimator_and_policy():

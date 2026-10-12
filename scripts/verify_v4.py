@@ -84,7 +84,7 @@ def main():
     manifest=read_json(DATA/'manifest.json')
     row=next(r for r in manifest['records'] if r['role']=='cal' and r['dataset']=='saberzl/SID_Set')
     image=open_image(ROOT/row['path'])
-    kwargs=dict(model_id='openai/clip-vit-base-patch32',use_tta=True,use_forensic=True,tta_jpeg_quality=70,tta_resize_scale=.5)
+    kwargs=dict(model_id='openai/clip-vit-base-patch32',use_tta=True,use_forensic=True,tta_jpeg_quality=70,tta_resize_scale=.5,encoder_snapshots=bundle['meta'].get('encoder_snapshots'))
     deployed_variant=bundle['meta']['feature_variant']
     feat=embed_for_score(image,variant=deployed_variant,**kwargs)
     with np.load(CACHE/'images'/f'cal_{row["group"]}.npz') as z:

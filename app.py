@@ -18,6 +18,7 @@ from src.config import load_config, model_path
 from src.decision import verdict
 from src.features import DEFAULT_FEATURE_VARIANT
 from src.model import load_bundle
+from src.encoder_revisions import validate_snapshots
 from src.repost import CHAINS, apply_chain, rescale
 from src.score import embed_for_score, score_from_embed
 
@@ -28,10 +29,13 @@ META = {}
 
 def load_weights(weights: Path | None = None):
     global BUNDLE, META
+    loaded = load_bundle(weights or model_path(cfg))
+    meta = loaded.get("meta", {})
+    validate_snapshots(meta.get("encoder_snapshots"), meta.get("clip_model_id", cfg["clip_model_id"]),
+                       meta.get("feature_variant", DEFAULT_FEATURE_VARIANT))
     if not torch.cuda.is_available():
-        torch.set_num_threads(int(cfg.get('cpu_threads', 4)))
-    BUNDLE = load_bundle(weights or model_path(cfg))
-    META = BUNDLE.get("meta", {})
+        torch.set_num_threads(int(cfg.get("cpu_threads", 4)))
+    BUNDLE, META = loaded, meta
 
 
 def score_image(
@@ -64,6 +68,7 @@ def score_image(
         use_forensic=META.get("use_forensic", True),
         use_tta=META.get("use_tta", True),
         variant=META.get("feature_variant", DEFAULT_FEATURE_VARIANT),
+        encoder_snapshots=META.get("encoder_snapshots"),
         tta_jpeg_quality=META.get("tta_jpeg_quality", cfg["tta_jpeg_quality"]),
         tta_resize_scale=META.get("tta_resize_scale", cfg["tta_resize_scale"]),
     )

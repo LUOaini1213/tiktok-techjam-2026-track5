@@ -1,7 +1,12 @@
-"""Populate the README's generated sections from results/.
+"""Populate the generated sections of README.md and docs/v2_history.md.
 
 Idempotent: each section lives between `<!-- NAME -->` and `<!-- /NAME -->` and is
 rewritten in place, so re-running after a fresh eval just refreshes the numbers.
+
+README.md carries the sections about the current tree (the samples/ scores pinned in
+tests/golden_smoke.json and the test count). The v1/v2 result tables moved with the
+pre-v3 README into docs/v2_history.md; they are still rendered from the committed
+results/*.csv files, with image links relative to docs/.
 
 Usage:  python scripts/update_readme.py
 """
@@ -45,7 +50,7 @@ def _md_table(rows: list[dict]) -> str:
     return f"{head}\n{body}"
 
 
-def robustness_section(results: Path) -> str:
+def robustness_section(results: Path, link_prefix: str = "") -> str:
     rows = _rows(results / "robustness_table.csv")
     if not rows:
         return MISSING
@@ -64,7 +69,7 @@ def robustness_section(results: Path) -> str:
         "inference path after the transform, so clean and transformed numbers are directly comparable."
     )
     if (results / "robustness_chart.png").exists():
-        parts += ["", "![Robustness: clean vs social-media transforms](results/robustness_chart.png)"]
+        parts += ["", f"![Robustness: clean vs social-media transforms]({link_prefix}results/robustness_chart.png)"]
     return "\n".join(parts)
 
 
@@ -217,7 +222,7 @@ def _abl_matrix(rows: list[dict]) -> dict:
     return {"mean": mean, "worst": worst}
 
 
-def ablation_section(results: Path) -> str:
+def ablation_section(results: Path, link_prefix: str = "") -> str:
     rows = _rows(results / "ablation_table.csv")
     if not rows:
         return MISSING
@@ -259,7 +264,7 @@ def ablation_section(results: Path) -> str:
                     f"{b.get('forensic_4v', nan):.4f} | **{b.get('forensic_5v', nan):.4f}** |"
                 )
     if (results / "ablation_chart.png").exists():
-        out += ["", "![Ablation: features x training views vs a UnivFD-style baseline](results/ablation_chart.png)"]
+        out += ["", f"![Ablation: features x training views vs a UnivFD-style baseline]({link_prefix}results/ablation_chart.png)"]
     return "\n".join(out)
 
 
@@ -412,12 +417,20 @@ def samples_section(root: Path) -> str:
     if not path.exists():
         return MISSING
     golden = json.loads(path.read_text(encoding="utf-8"))
-    scored = ", ".join(f"`{name}` {value:.4f}" for name, value in sorted(golden["tta"].items()))
+
+    def scored(values: dict) -> str:
+        return ", ".join(f"`{name}` {value:.4f}" for name, value in sorted(values.items()))
+
+    heads = [f"default head (`{golden['weights']}`): {scored(golden['tta'])}"]
+    opt_in = golden.get("opt_in_v4")
+    if opt_in:
+        heads.append(f"opt-in V4 artifact (`{opt_in['weights']}`): {scored(opt_in['tta'])}")
     return (
-        f"{scored} -- through the shipped 3-view TTA path. Both values are pinned in "
-        f"`tests/golden_smoke.json` and asserted by CI to {golden['tolerance']}, so a swapped "
-        "head or a drifted encoder turns the badge red instead of quietly changing what the "
-        "smoke test prints."
+        "P(AIGC) through the default 3-view TTA path -- " + "; ".join(heads) + ". "
+        f"These values are pinned in `tests/golden_smoke.json` and asserted by CI to "
+        f"{golden['tolerance']}, so a swapped head or a drifted encoder turns the badge red "
+        "instead of quietly changing what the smoke test prints; after installing a new head, "
+        "re-pin them with `python scripts/make_golden_smoke.py`."
     )
 
 
@@ -434,42 +447,56 @@ def tests_count_section(root: Path) -> str:
     )
 
 
-def replace_section(text: str, name: str, body: str) -> str:
+def replace_section(text: str, name: str, body: str, where: str = "README") -> str:
     start, end = f"<!-- {name} -->", f"<!-- /{name} -->"
     i = text.find(start)
     if i < 0:
-        raise SystemExit(f"README is missing the {start} marker")
+        raise SystemExit(f"{where} is missing the {start} marker")
     j = text.find(end, i)
     if j < 0:
-        raise SystemExit(f"README is missing the {end} marker")
+        raise SystemExit(f"{where} is missing the {end} marker")
     return text[: i + len(start)] + "\n" + body + "\n" + text[j:]
+
+
+def _render(path: Path, required, optional=()) -> None:
+    text = path.read_text(encoding="utf-8")
+    for name, body in required:
+        text = replace_section(text, name, body, where=path.name)
+    # Sections that only exist in some revisions: rendered when their markers are present.
+    for name, body in optional:
+        if f"<!-- {name} -->" in text:
+            text = replace_section(text, name, body, where=path.name)
+    path.write_text(text, encoding="utf-8", newline="\n")
+    print(f"Updated {path}")
 
 
 def main() -> None:
     enable_utf8_stdout()
     cfg = load_config()
+    root = cfg["root"]
     results = cfg["results_dir"]
-    readme = cfg["root"] / "README.md"
-    text = readme.read_text(encoding="utf-8")
-    for name, body in (
-        ("HEADLINE", headline_section(results)),
-        ("SAMPLES", samples_section(cfg["root"])),
-        ("TESTS_COUNT", tests_count_section(cfg["root"])),
-        ("ROBUSTNESS_TABLE", robustness_section(results)),
-        ("DEMO_TABLE", demo_section(results)),
-        ("AB_TABLE", ab_section(results)),
-        ("BY_CLASS", by_class_section(results)),
-        ("ABLATION", ablation_section(results)),
-        ("LEAKAGE", leakage_section(results)),
-        ("ERROR_ANALYSIS", error_section(results)),
-    ):
-        text = replace_section(text, name, body)
-    # Sections that only exist in newer README revisions: rendered when their markers are present.
-    for name, body in (("AB_V1V2", ab_v1v2_section(results)), ("CROPS_TABLE", crops_section(results))):
-        if f"<!-- {name} -->" in text:
-            text = replace_section(text, name, body)
-    readme.write_text(text, encoding="utf-8", newline="\n")
-    print(f"Updated {readme}")
+    _render(
+        root / "README.md",
+        (
+            ("SAMPLES", samples_section(root)),
+            ("TESTS_COUNT", tests_count_section(root)),
+        ),
+    )
+    # The archived pre-v3 README lives in docs/, so its image links climb one level.
+    _render(
+        root / "docs" / "v2_history.md",
+        (
+            ("HEADLINE", headline_section(results)),
+            ("ROBUSTNESS_TABLE", robustness_section(results, link_prefix="../")),
+            ("DEMO_TABLE", demo_section(results)),
+            ("AB_TABLE", ab_section(results)),
+            ("BY_CLASS", by_class_section(results)),
+            ("ABLATION", ablation_section(results, link_prefix="../")),
+            ("LEAKAGE", leakage_section(results)),
+            ("ERROR_ANALYSIS", error_section(results)),
+        ),
+        (("AB_V1V2", ab_v1v2_section(results)), ("CROPS_TABLE", crops_section(results))),
+    )
 
 
 if __name__ == "__main__":

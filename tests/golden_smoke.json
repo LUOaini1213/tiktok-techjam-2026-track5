@@ -1,12 +1,24 @@
 {
-  "note": "P(AIGC) that the shipped head (artifacts/repostguard.joblib) gives the two procedural fixtures in samples/. Both fixtures are written by scripts/make_samples.py and neither is AI-generated: real_noise.jpg is a seeded noise-plus-gradient field, synth_pattern.png is a sin/cos/modulo stripe pattern. They exist to exercise the infer.py contract, not to demonstrate detection, so the values below are a regression anchor rather than a claim. Asserted by .github/workflows/tests.yml and tests/test_augment_contract.py; regenerate with scripts/make_golden_smoke.py after any change to the head, the encoders or the feature path.",
+  "note": "P(AIGC) that the default shipped head (\"weights\", top-level \"tta\" / \"no_tta\") and the opt-in V4 artifact (\"opt_in_v4\") give the two procedural fixtures in samples/. Both fixtures are written by scripts/make_samples.py and neither is AI-generated: real_noise.jpg is a seeded noise-plus-gradient field, synth_pattern.png is a sin/cos/modulo stripe pattern. They exist to exercise the infer.py contract, not to demonstrate detection, so the values below are a regression anchor rather than a claim. Asserted by .github/workflows/tests.yml and tests/test_augment_contract.py; regenerate with scripts/make_golden_smoke.py after any change to a head, the encoders or the feature path.",
   "tolerance": 0.001,
+  "weights": "artifacts/repostguard.joblib",
   "tta": {
-    "real_noise.jpg": 0.000462,
-    "synth_pattern.png": 0.037427
+    "real_noise.jpg": 0.014039,
+    "synth_pattern.png": 0.660153
   },
   "no_tta": {
-    "real_noise.jpg": 0.02282,
-    "synth_pattern.png": 0.475957
+    "real_noise.jpg": 0.061596,
+    "synth_pattern.png": 0.899693
+  },
+  "opt_in_v4": {
+    "weights": "results/v4/repostguard.joblib",
+    "tta": {
+      "real_noise.jpg": 0.112439,
+      "synth_pattern.png": 0.86339
+    },
+    "no_tta": {
+      "real_noise.jpg": 0.144515,
+      "synth_pattern.png": 0.964197
+    }
   }
 }

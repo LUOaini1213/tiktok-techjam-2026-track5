@@ -13,6 +13,7 @@ from scipy.fftpack import dct
 from transformers import AutoImageProcessor, AutoModel, CLIPModel, CLIPProcessor
 
 from .augment import down_up_resize, jpeg_compress, multi_crops, to_rgb
+from .encoder_revisions import active_revision, EncoderLoadError
 
 FORENSIC_DIM = 28
 CLIP_DIM = 512  # projected (visual_projection) feature width
@@ -54,11 +55,19 @@ def get_device() -> torch.device:
     return torch.device("cpu")
 
 
-@lru_cache(maxsize=1)
 def load_clip(model_id: str = "openai/clip-vit-base-patch32"):
+    revision = active_revision(model_id)
+    try:
+        return _load_clip(model_id, revision, revision)
+    except Exception as exc:
+        raise EncoderLoadError("CLIP encoder assets could not load; no prediction was produced") from exc
+
+
+@lru_cache(maxsize=1)
+def _load_clip(model_id, model_revision, processor_revision):
     device = get_device()
-    processor = CLIPProcessor.from_pretrained(model_id)
-    model = CLIPModel.from_pretrained(model_id)
+    processor = CLIPProcessor.from_pretrained(model_id, revision=processor_revision)
+    model = CLIPModel.from_pretrained(model_id, revision=model_revision)
     model.eval()
     model.to(device)
     return processor, model, device
@@ -101,11 +110,19 @@ def clip_embed_batch(
     return clip_embed_batch_dual(images, model_id=model_id)[variant]
 
 
-@lru_cache(maxsize=1)
 def load_dino(model_id: str = DINO_MODEL_ID):
+    revision = active_revision(model_id)
+    try:
+        return _load_dino(model_id, revision, revision)
+    except Exception as exc:
+        raise EncoderLoadError("DINO encoder assets could not load; no prediction was produced") from exc
+
+
+@lru_cache(maxsize=1)
+def _load_dino(model_id, model_revision, processor_revision):
     device = get_device()
-    processor = AutoImageProcessor.from_pretrained(model_id)
-    model = AutoModel.from_pretrained(model_id)
+    processor = AutoImageProcessor.from_pretrained(model_id, revision=processor_revision)
+    model = AutoModel.from_pretrained(model_id, revision=model_revision)
     model.eval()
     model.to(device)
     return processor, model, device

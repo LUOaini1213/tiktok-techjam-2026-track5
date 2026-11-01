@@ -9,9 +9,10 @@ from PIL import Image
 
 from .features import DEFAULT_FEATURE_VARIANT, embed_one, embed_one_dual
 from .model import predict_proba
+from .encoder_revisions import encoder_scope
 
 
-def embed_for_score(
+def _embed_for_score(
     image: Image.Image,
     model_id: str,
     use_forensic: bool = True,
@@ -25,6 +26,18 @@ def embed_for_score(
 
     `crops=N` adds N corner/centre crops to the averaged view set (eval-time multi-crop).
     """
+    if variant in ('v4_local','v4_global'):
+        if not use_forensic or crops:
+            raise ValueError('V4 local descriptor requires forensic features and crops=0')
+        from .features_v4 import embed_v4, center_forensic
+        if variant == 'v4_local':
+            return embed_v4(image, model_id=model_id, use_tta=use_tta,
+                            tta_jpeg_quality=tta_jpeg_quality, tta_resize_scale=tta_resize_scale)
+        from .features import _tta_clip_means, dino_embed_batch
+        clip=_tta_clip_means(image,model_id,use_tta,tta_jpeg_quality,tta_resize_scale)['proj']
+        dino=dino_embed_batch([image])[0]
+        dino=dino/(np.linalg.norm(dino)+1e-8)
+        return np.concatenate([clip,dino,center_forensic(image)]).astype(np.float32)
     return embed_one(
         image,
         model_id=model_id,
@@ -37,7 +50,7 @@ def embed_for_score(
     )
 
 
-def embed_for_score_dual(
+def _embed_for_score_dual(
     image: Image.Image,
     model_id: str,
     use_forensic: bool = True,
@@ -57,5 +70,24 @@ def embed_for_score_dual(
 
 
 def score_from_embed(bundle: dict[str, Any], feat: np.ndarray) -> float:
+    if not np.isfinite(feat).all():
+        raise ValueError("Non-finite image features")
     pred = float(predict_proba(bundle, feat.reshape(1, -1))[0])
+    if not np.isfinite(pred):
+        raise ValueError("Non-finite model score")
     return min(1.0, max(0.0, pred))
+
+
+def embed_for_score(image, model_id, use_forensic=True, use_tta=True,
+                    tta_jpeg_quality=70, tta_resize_scale=0.5,
+                    variant=DEFAULT_FEATURE_VARIANT, crops=0, *, encoder_snapshots=None):
+    with encoder_scope(encoder_snapshots, model_id, variant):
+        return _embed_for_score(image, model_id, use_forensic, use_tta,
+                                tta_jpeg_quality, tta_resize_scale, variant, crops)
+
+
+def embed_for_score_dual(image, model_id, use_forensic=True, use_tta=True,
+                         tta_jpeg_quality=70, tta_resize_scale=0.5, *, encoder_snapshots=None):
+    with encoder_scope(encoder_snapshots, model_id, "fuse"):
+        return _embed_for_score_dual(image, model_id, use_forensic, use_tta,
+                                     tta_jpeg_quality, tta_resize_scale)

@@ -31,6 +31,7 @@ from src.io_utils import enable_utf8_stdout
 from src.augment import PAIR_FAMILIES
 from src.features import BASE_DIMS, DINO_MODEL_ID, FEATURE_VARIANTS, feature_dim_for_variant
 from src.model import save_bundle
+from src.encoder_revisions import matching_cache_snapshots
 from src.train_signal import fit_with_training_signal, positive_proba
 
 
@@ -137,7 +138,7 @@ def source_groups(n_rows: int, views_per_image: int) -> np.ndarray:
     return np.arange(n_rows) // max(1, views_per_image)
 
 
-def cv_auc(X, y, sid, groups, views_per_image, C, n_splits) -> float:
+def cv_auc(X, y, sid, groups, views_per_image, C, n_splits, tampered_weight=5.0) -> float:
     """Mean GroupKFold AUC. Each fold fits the SAME training-signal head used to ship."""
     n_groups = len(np.unique(groups))
     n_splits = min(n_splits, n_groups)
@@ -146,12 +147,15 @@ def cv_auc(X, y, sid, groups, views_per_image, C, n_splits) -> float:
     gkf = GroupKFold(n_splits=n_splits)
     aucs = []
     for tr, te in gkf.split(X, y, groups):
-        # Refit views_per_image inside the fold: the consistency expansion needs whole
-        # image blocks, and GroupKFold keeps each image's views together, but the fold
-        # rows are not necessarily a clean multiple -> fit per-row (vpi=1) inside CV to
-        # keep it robust; the tampered upweight signal is preserved.
+        # GroupKFold preserves complete source-image blocks. Check that contract rather
+        # than silently disabling the consistency rows used by the final fit.
+        if len(tr) % views_per_image or len(te) % views_per_image:
+            raise ValueError("CV fold split a source-image view block")
+        if not np.all(groups[tr].reshape(-1, views_per_image) == groups[tr][::views_per_image, None]):
+            raise ValueError("CV training rows are not contiguous source-image blocks")
         model = fit_with_training_signal(
-            X[tr], y[tr], sid[tr], views_per_image=1, C=C
+            X[tr], y[tr], sid[tr], views_per_image=views_per_image, C=C,
+            tampered_weight=tampered_weight,
         )
         s = positive_proba(model, X[te])
         if len(np.unique(y[te])) < 2:
@@ -204,6 +208,13 @@ def main() -> None:
     if not train_path.exists():
         raise SystemExit("Run scripts/extract_features.py --split train --augment first")
 
+    cache_paths=[train_path,*(args.extra_features or [])]
+    if val_path.exists(): cache_paths.append(val_path)
+    cache_maps=[]
+    for path in cache_paths:
+        with np.load(path) as cache:
+            cache_maps.append({"encoder_snapshots":cache["encoder_snapshots"]} if "encoder_snapshots" in cache else {})
+    snapshots=matching_cache_snapshots(cache_maps,cfg["clip_model_id"])
     Xtr, ytr, sidtr, vpi = load_npz(train_path)
     extra_names = []
     if args.extra_features:
@@ -305,6 +316,7 @@ def main() -> None:
 
     meta = {
         "clip_model_id": cfg["clip_model_id"],
+        "encoder_snapshots": snapshots,
         "use_forensic": cfg["use_forensic"],
         "use_tta": cfg["use_tta"],
         "tta_jpeg_quality": cfg["tta_jpeg_quality"],

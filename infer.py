@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 import traceback
 from pathlib import Path
+import torch
 
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
@@ -24,10 +26,13 @@ from src.config import load_config, model_path
 from src.features import DEFAULT_FEATURE_VARIANT, feature_dim_for_variant
 from src.io_utils import enable_utf8_stdout, list_images, open_image
 from src.model import load_bundle
+from src.encoder_revisions import validate_snapshots, EncoderLoadError
 from src.score import embed_for_score, score_from_embed
 
 
 def clamp_pred(pred: float) -> float:
+    if not math.isfinite(float(pred)):
+        return FALLBACK_PRED
     return min(1.0, max(0.0, float(pred)))
 
 
@@ -47,13 +52,22 @@ def score_directory(
     config: Path | None = None,
     weights: Path | None = None,
     use_tta: bool | None = None,
+    cpu_threads: int | None = None,
 ) -> list[dict]:
     cfg = load_config(config)
+    # Small image forwards are slower with excessive CPU thread fan-out. Match the
+    # feature-cache runtime by default; callers can benchmark and override this.
+    threads = int(cpu_threads if cpu_threads is not None else cfg.get('cpu_threads', 4))
+    if threads < 1:
+        raise ValueError('cpu_threads must be positive')
     bundle = load_bundle(weights or model_path(cfg))
     meta = bundle.get("meta", {})
     model_id = meta.get("clip_model_id", cfg["clip_model_id"])
     use_forensic = meta.get("use_forensic", cfg["use_forensic"])
     variant = meta.get("feature_variant", DEFAULT_FEATURE_VARIANT)
+    snapshots = validate_snapshots(meta.get("encoder_snapshots"), model_id, variant)
+    if not torch.cuda.is_available():
+        torch.set_num_threads(threads)
     if use_tta is None:
         use_tta = bool(meta.get("use_tta", cfg["use_tta"]))
 
@@ -61,7 +75,13 @@ def score_directory(
     # handler) if the weights were trained on a different feature width than the
     # current pipeline produces for this variant -- otherwise every image would
     # silently score the fallback 0.5.
-    expected_dim = feature_dim_for_variant(variant, use_forensic)
+    if variant in ('v4_local','v4_global'):
+        from src.features_v4 import V4_DIM
+        if not use_forensic:
+            raise SystemExit('V4 local weights require forensic features')
+        expected_dim = V4_DIM if variant=='v4_local' else 924
+    else:
+        expected_dim = feature_dim_for_variant(variant, use_forensic)
     trained_dim = meta.get("feature_dim")
     if trained_dim is not None and int(trained_dim) != expected_dim:
         raise SystemExit(
@@ -88,11 +108,14 @@ def score_directory(
                 model_id=model_id,
                 use_forensic=use_forensic,
                 use_tta=use_tta,
-                tta_jpeg_quality=cfg["tta_jpeg_quality"],
-                tta_resize_scale=cfg["tta_resize_scale"],
+                tta_jpeg_quality=meta.get("tta_jpeg_quality", cfg["tta_jpeg_quality"]),
+                tta_resize_scale=meta.get("tta_resize_scale", cfg["tta_resize_scale"]),
                 variant=variant,
+                encoder_snapshots=snapshots,
             )
             pred = score_from_embed(bundle, feat)
+        except EncoderLoadError:
+            raise  # shared checkpoint failure must not become successful fallback rows
         except Exception:  # one unreadable image must not abort the whole run
             print(f"WARNING: failed to score {path}; emitting fallback pred.", file=sys.stderr)
             traceback.print_exc()
@@ -110,6 +133,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--config", type=Path, default=None)
     p.add_argument("--weights", type=Path, default=None, help="Override artifacts/repostguard.joblib")
     p.add_argument("--no_tta", action="store_true")
+    p.add_argument("--threads", type=int, default=None, help="CPU threads (default: 4); does not change CUDA settings")
     return p.parse_args()
 
 
@@ -123,6 +147,7 @@ def main() -> None:
             config=args.config,
             weights=args.weights,
             use_tta=False if args.no_tta else None,
+            cpu_threads=args.threads,
         )
     except FileNotFoundError as exc:
         raise SystemExit(str(exc)) from exc

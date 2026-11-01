@@ -205,6 +205,7 @@ def main() -> None:
             feat = embed_for_score(
                 view,
                 model_id=meta.get("clip_model_id", cfg["clip_model_id"]),
+                encoder_snapshots=meta.get("encoder_snapshots"),
                 use_forensic=meta.get("use_forensic", True),
                 use_tta=use_tta,
                 tta_jpeg_quality=cfg["tta_jpeg_quality"],

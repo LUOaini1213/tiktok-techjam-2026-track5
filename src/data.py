@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import io
 from pathlib import Path
 from typing import Any
 
@@ -143,6 +145,13 @@ def subsample_sid_streaming(
         "val": _existing_sid_counts(out_dir, "val"),
     }
     saved = []
+    # A restarted stream replays its beginning. Counts alone cannot tell whether a
+    # replayed record was saved before; compare the exact bytes we would store.
+    seen_hashes = {
+        split: {hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in list_images(out_dir / split)}
+        for split in ("train", "val")
+    }
 
     def _full(split_name: str) -> bool:
         return all(counts[split_name][k] >= quotas[split_name][k] for k in quotas[split_name])
@@ -183,12 +192,20 @@ def subsample_sid_streaming(
                     img = ingested["image"]
                     if not isinstance(img, Image.Image):
                         img = Image.fromarray(img).convert("RGB")
+                    encoded = io.BytesIO()
+                    img.convert("RGB").save(encoded, format="JPEG", quality=95)
+                    payload = encoded.getvalue()
+                    digest = hashlib.sha256(payload).hexdigest()
+                    if digest in seen_hashes[split_name]:
+                        continue
                     idx = counts[split_name][sid]
                     dest = out_dir / split_name / ingested["folder"] / f"{sid}_{idx:06d}.jpg"
                     while dest.exists():
                         idx += 1
                         dest = out_dir / split_name / ingested["folder"] / f"{sid}_{idx:06d}.jpg"
-                    write_image(dest, img)
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    dest.write_bytes(payload)
+                    seen_hashes[split_name].add(digest)
                     counts[split_name][sid] = idx + 1
                     saved.append(
                         {
@@ -196,6 +213,8 @@ def subsample_sid_streaming(
                             "sid_label": sid,
                             "label": ingested["label"],
                             "split": split_name,
+                            "source_id": str(row.get("img_id", digest)),
+                            "sha256": digest,
                         }
                     )
                     if scanned % 200 == 0:
@@ -242,6 +261,8 @@ def subsample_sid_streaming(
         "val_per_class": val_per_class,
         "counts_by_sid_label": counts,
         "binary_counts": binary,
+        "saved_records": saved,
+        "unique_file_hashes": {k: len(v) for k, v in seen_hashes.items()},
         "note": (
             "SID-Set binary: 0=real, 1=AIGC-positive (full-synthetic + tampered). "
             "WildFake demo split never used."

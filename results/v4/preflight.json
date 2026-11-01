@@ -1,0 +1,44 @@
+{
+  "default_v3_unchanged_sha256": "98673db537881a17c2301ea7d190b2b17596dbee55349c3d36211547e6792a3d",
+  "release_verification_code_sha256": "11d499df2d082b282d63c3d0e3354deb13c8512aaac6cbfc1e4b772f759de3ab",
+  "experimental_head_sha256": "b8bb73c6f7ccc255d900175047c0137f1a3c9c45f0f1f164ec287c5bd51c0589",
+  "cli_rows": 3,
+  "cli_wall_seconds_including_startup": 20.295923800003948,
+  "packaged_sha256": "ceff61e13ad20531a77893b5dae4e9a10d7fb09fcd65f4cf76a96cb76da2046c",
+  "packaged_variant": "v4_global",
+  "global_only_padding_exact_test_predictions": true,
+  "measured_single_batch_calibration_score_drift": 6.325285195618591e-08,
+  "broken_fallback": 0.5,
+  "shared_extract_infer_features_match": true,
+  "latency": {
+    "fuse": {
+      "warm_seconds_mean": 0.3355631800019182,
+      "samples": [
+        0.37652829999569803,
+        0.34198700000706594,
+        0.3466636000084691,
+        0.3095032999990508,
+        0.3031336999993073
+      ]
+    },
+    "v4_global": {
+      "warm_seconds_mean": 0.3856618400022853,
+      "samples": [
+        0.3712227000069106,
+        0.3740284000086831,
+        0.3869006000022637,
+        0.44182110000110697,
+        0.35433639999246225
+      ]
+    }
+  },
+  "ui": {
+    "score": 0.801699772381014,
+    "verdict": "Needs review  (AIGC score = 0.802)\nAI flag ≥ 0.970; low signal ≤ 0.116. Thresholds are calibration-specific. Low signal is not proof of authenticity. V4 policy was calibrated on clean and crop-resize-JPEG only; other edits are stress tests.",
+    "http_status": 200,
+    "inputs": 7,
+    "outputs": 3
+  },
+  "default_promoted": false,
+  "note": "V4 remains an explicitly selectable research artifact. V3 is preserved; this check does not guarantee real-world robustness."
+}

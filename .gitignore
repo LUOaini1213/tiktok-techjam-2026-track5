@@ -66,3 +66,11 @@ results/_parts_crops/
 # sharded feature parts and helper sub-shards (hundreds of MB, regenerable)
 artifacts/_feat/
 results/_parts_manual/
+
+# v3 reproducible local caches (only reports, manifests and selected weights ship)
+artifacts/v3/
+results/v3/scores/
+
+# V4 local image/feature caches and non-shipped experiment heads
+artifacts/v4/
+results/v4/scores/

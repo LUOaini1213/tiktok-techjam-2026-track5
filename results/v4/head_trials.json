@@ -1,0 +1,84 @@
+[
+  {
+    "name": "lr_001",
+    "kind": "lr",
+    "C": 0.01,
+    "fold_auc": [
+      0.928330341363919,
+      0.9141288976631523,
+      0.9092341140262771
+    ],
+    "cv_auc": 0.9172311176844494,
+    "seconds": 5.045887499989476,
+    "training_originals": 13021,
+    "training_rows": 77870,
+    "weighting": "equal SID/CF subclass strata and per-original weight; MLP fits source means"
+  },
+  {
+    "name": "lr_01",
+    "kind": "lr",
+    "C": 0.1,
+    "fold_auc": [
+      0.9219553509684899,
+      0.9069832402234637,
+      0.904101754843084
+    ],
+    "cv_auc": 0.9110134486783458,
+    "seconds": 4.6216156000009505,
+    "training_originals": 13021,
+    "training_rows": 77870,
+    "weighting": "equal SID/CF subclass strata and per-original weight; MLP fits source means"
+  },
+  {
+    "name": "mlp64",
+    "kind": "mlp",
+    "C": 0.01,
+    "fold_auc": [
+      0.9228979959625876,
+      0.9233194718640176,
+      0.8991129826448863
+    ],
+    "cv_auc": 0.9151101501571638,
+    "seconds": 8.213754500000505,
+    "training_originals": 13021,
+    "training_rows": 77870,
+    "weighting": "equal SID/CF subclass strata and per-original weight; MLP fits source means"
+  },
+  {
+    "name": "hgb80",
+    "kind": "hgb",
+    "C": 0.01,
+    "fold_auc": [
+      0.898450695370946,
+      0.8655024432589855,
+      0.8702372897501307
+    ],
+    "cv_auc": 0.8780634761266874,
+    "seconds": 520.8917951999902,
+    "training_originals": 13021,
+    "training_rows": 77870,
+    "weighting": "equal SID/CF subclass strata and per-original weight; MLP fits source means"
+  },
+  {
+    "name": "local_lr_0.01",
+    "fold_auc": [
+      0.8652822871572872,
+      0.8484773625583902,
+      0.8522137917787169
+    ],
+    "cv_auc": 0.8553244804981315,
+    "training_originals": 640,
+    "dimensions": 824
+  },
+  {
+    "name": "local_lr_0.1",
+    "fold_auc": [
+      0.8536706349206349,
+      0.8330039525691699,
+      0.848348059930849
+    ],
+    "cv_auc": 0.8450075491402179,
+    "training_originals": 640,
+    "dimensions": 824
+  }
+]

@@ -13,39 +13,59 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
           cache: pip
       - name: Install CPU torch + deps
         run: |
           python -m pip install --upgrade pip
-          python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install -r requirements.txt pytest
+          python -m pip install torch==2.13.0 torchvision==0.28.0 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -r requirements.txt pytest -c constraints-v3.txt
+      - name: Historical source and artifact receipts (no model load)
+        run: |
+          python scripts/check_encoder_receipts.py
+          python -O scripts/check_encoder_receipts.py
       - name: Run tests (dataset-dependent tests skip on a clean checkout)
         env:
           OMP_NUM_THREADS: "2"
           HF_HUB_DISABLE_TELEMETRY: "1"
         run: python -m pytest tests/ -q
       - name: README numbers still regenerate from results/
-        # The README's result blocks are generated from results/*.csv. Regenerate them on a
-        # clean checkout and fail if anything moved: a hand-edited AUC, or a results/ file
-        # changed without re-running the script, both show up here as a non-empty diff.
+        # The generated blocks in README.md and in the archived pre-v3 README
+        # (docs/v2_history.md) come from results/*.csv and tests/golden_smoke.json.
+        # Regenerate them on a clean checkout and fail if anything moved: a hand-edited AUC,
+        # or a results/ file changed without re-running the script, both show up here as a
+        # non-empty diff.
         run: |
           python scripts/update_readme.py
-          git diff --exit-code README.md
+          git diff --exit-code README.md docs/v2_history.md
       - name: Inference contract smoke test
+        env:
+          OMP_NUM_THREADS: "2"
+          HF_HUB_DISABLE_TELEMETRY: "1"
         run: |
-          python infer.py --input_dir samples --output preds.json
           python - <<'PY'
-          import json, pathlib
-          rows = json.load(open("preds.json", encoding="utf-8"))
-          assert len(rows) == 2 and all(set(r) == {"image_path", "pred"} for r in rows)
-          assert all(0.0 <= r["pred"] <= 1.0 for r in rows)
-          # 0 <= pred <= 1 alone survives a swapped head or a drifted encoder: this fixture's
+          import json, pathlib, subprocess, sys
+          # 0 <= pred <= 1 alone survives a swapped head or a drifted encoder: one fixture's
           # score has already moved from 0.6884 to 0.0374 between two green runs. Pin it.
           golden = json.load(open("tests/golden_smoke.json", encoding="utf-8"))
-          tol, expected = golden["tolerance"], golden["tta"]
-          for r in rows:
-              name = pathlib.PurePath(r["image_path"]).name
-              assert abs(r["pred"] - expected[name]) < tol, (name, r["pred"], expected[name])
-          print("preds.json ok, matches tests/golden_smoke.json:", rows)
+          tol = golden["tolerance"]
+          expected_by_weights = {
+              golden["weights"]: golden["tta"],
+              golden["opt_in_v4"]["weights"]: golden["opt_in_v4"]["tta"],
+          }
+          for weights in ("artifacts/repostguard.joblib", "results/v4/repostguard.joblib"):
+              result = subprocess.run([sys.executable, "infer.py", "--input_dir", "samples", "--output", "preds.json", "--weights", weights], text=True, capture_output=True)
+              print(result.stdout)
+              print(result.stderr, file=sys.stderr)
+              assert result.returncode == 0, weights
+              assert "WARNING: failed to score " not in result.stderr, "Valid samples must be scored, not silently replaced by fallback values"
+              rows = json.load(open("preds.json", encoding="utf-8"))
+              assert len(rows) == 2 and all(set(r) == {"image_path", "pred"} for r in rows)
+              assert all(0.0 <= r["pred"] <= 1.0 for r in rows)
+              expected = expected_by_weights[weights]
+              got = {pathlib.PurePath(r["image_path"]).name: r["pred"] for r in rows}
+              assert set(got) == set(expected), (weights, sorted(got), sorted(expected))
+              for name, want in expected.items():
+                  assert abs(got[name] - want) < tol, (weights, name, got[name], want)
+              print(weights, "preds.json ok, matches tests/golden_smoke.json:", rows)
           PY

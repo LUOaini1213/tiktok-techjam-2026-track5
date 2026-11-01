@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "source_commit": "1249bc1ecdbd050a03ec6071dcb7708adf683a4f",
+  "purpose": "Historical source audit only; not executable and not evidence of new runtime measurements.",
+  "files": {
+    "src/features.py": {
+      "recorded_sha256": "52a7ca080675901ec368256fb13a5ab7437e1b88b45659fac6968b7523a8b435",
+      "snapshot": "docs/frozen-source/1249bc1ecdbd050a03ec6071dcb7708adf683a4f/src/features.py.txt",
+      "runtime_sha256": "1cace3d859513b72677a4f95f8bd63a51454ba518a2e33a6b124c9a31488e611"
+    },
+    "src/score.py": {
+      "recorded_sha256": "704e4dd851ab59985344d16b5dd93069ac54561eb4bafae64a9cb39195d53539",
+      "snapshot": "docs/frozen-source/1249bc1ecdbd050a03ec6071dcb7708adf683a4f/src/score.py.txt",
+      "runtime_sha256": "ccf4b948521c935857024a490a1619a0c1ec29e7829b6480809f5cb0fd9bd0d3"
+    },
+    "scripts/extract_v3.py": {
+      "recorded_sha256": "40fe3ca9676624bbc46c54a03fb038cb97e6d1d7f4540c08064c0f228e357979",
+      "snapshot": "docs/frozen-source/1249bc1ecdbd050a03ec6071dcb7708adf683a4f/scripts/extract_v3.py.txt",
+      "runtime_sha256": "adf23785cc26cfd161aa0660c97920b38edec3627a5a1d8f19073d70ee32d3f5"
+    },
+    "scripts/train_v3.py": {
+      "recorded_sha256": "ff1cc8c8b9805c29ef343ea8d60d394511b4fac398d4be919ae32c184418863b",
+      "snapshot": "docs/frozen-source/1249bc1ecdbd050a03ec6071dcb7708adf683a4f/scripts/train_v3.py.txt",
+      "runtime_sha256": "35496303bc03a21a852fdc259d7a4a9ea7aa379ecf3201c6b0166587716204d8"
+    },
+    "scripts/extract_v4.py": {
+      "recorded_sha256": "02bfb42fce3681afd8d3637e0f6df9d1835f88f92298274821d6ff525e382909",
+      "snapshot": "docs/frozen-source/1249bc1ecdbd050a03ec6071dcb7708adf683a4f/scripts/extract_v4.py.txt",
+      "runtime_sha256": "42a9b9db8e204ef5a5c86b1bd3c4dad2e82e452363cc01950e61614df3e89167"
+    },
+    "scripts/train_v4.py": {
+      "recorded_sha256": "5c8ea8926b434cd57cafcc3900c377c89d2b407026e035c67d732241149d642e",
+      "snapshot": "docs/frozen-source/1249bc1ecdbd050a03ec6071dcb7708adf683a4f/scripts/train_v4.py.txt",
+      "runtime_sha256": "31c60130242170eb9305dc36d75662ea4223894df40908f74100931a00c1c748"
+    },
+    "scripts/v4_common.py": {
+      "recorded_sha256": "5d3abee3ad598ec0ef8bd4a5071e64938025740f65747cbb7bb46665dc541bf4",
+      "snapshot": "docs/frozen-source/1249bc1ecdbd050a03ec6071dcb7708adf683a4f/scripts/v4_common.py.txt",
+      "runtime_sha256": "4ec4c242b40eb4a4dcbf84a760fcd3b2be331c3f5ee01c8318246a8588bb3d29"
+    },
+    "scripts/train.py": {
+      "recorded_sha256": "241ab313b12b3fbeec59f6fa3aff7e33431952c89e3a75819798ef02c5c3dd46",
+      "snapshot": "docs/frozen-source/1249bc1ecdbd050a03ec6071dcb7708adf683a4f/scripts/train.py.txt",
+      "runtime_sha256": "c62bb3a9e28c22887d21638f443e6c5a57b1eca0cf8f57c3df57651886119df2"
+    },
+    "scripts/verify_v4.py": {
+      "recorded_sha256": "11d499df2d082b282d63c3d0e3354deb13c8512aaac6cbfc1e4b772f759de3ab",
+      "snapshot": "docs/frozen-source/1249bc1ecdbd050a03ec6071dcb7708adf683a4f/scripts/verify_v4.py.txt",
+      "runtime_sha256": "0dab98a7cd9bbfddf1649a0832648d8fe03bc49355e01044ec9d6995f27a874b"
+    }
+  }
+}

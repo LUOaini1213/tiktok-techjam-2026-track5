@@ -1,0 +1,41 @@
+# These files participate in byte-level experiment checksums. Do not normalize
+# CRLF/LF on checkout: Windows and Linux must see the exact locked evidence bytes.
+/results/v3/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/src/features.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/src/repost.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/src/augment.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/extract_v3.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/extract_v3_demo.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/train_v3.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+
+# V4 independent lock: preserve exact source/manifest/report bytes on every OS.
+/results/v4/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/docs/v4_protocol.md -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/src/features_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/src/model_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/src/decision_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/src/model.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/src/score.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/train.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/train_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/extract_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/prepare_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/v4_common.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/validate_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/src/forensic_v4_fast.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/eval_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/scripts/verify_v4.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+
+# Historical audit copies are data; preserve their exact original bytes.
+/docs/frozen-source/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/src/encoder_revisions.py text eol=lf
+/src/frozen_evidence.py text eol=lf
+
+# The new offline runtime receipt refers to platform-stable source bytes.
+/infer.py text eol=lf
+/app.py text eol=lf
+/scripts/check_encoder_receipts.py text eol=lf
+/tests/test_encoder_revisions.py text eol=lf
+/tests/test_frozen_source.py text eol=lf
+/docs/encoder_revision_runtime.md text eol=lf
+/results/runtime_integrity/** text eol=lf

@@ -105,11 +105,9 @@ python, pytorch, clip, transformers, huggingface, scikit-learn, numpy, scipy, op
 
 ## 8. Upload a File（上传文件，限 35 MB）
 
-上传这个文件（3.6 MB）：
-
-```
-repostguard-track5-submission.zip
-```
+这份交接单从未被使用，当时准备上传的那个打包件已不再保留在仓库里。
+截止日那一版的凭证改看 `results/v1/`（v1 的 head、WEIGHTS、逐张分数、稳健性表），
+以及提交 `e9769b4` 的仓库历史。
 
 ---
 
@@ -201,7 +199,7 @@ Five things the grid says, in order of importance:
 
 **A test we wrote destroyed a finished deliverable.** A new test called `evaluate_robustness(transforms=["clean", "jpeg_31"])` without a `table_path`, expecting a rejection. It got one — but only *after* the function had opened the real results file with `"w"`, truncating a completed 15-transform table that had taken half an hour to compute. The fix is that argument validation now happens before the destination is opened, and the test asserts the file is never created. Restored from git; the class of bug is worth more than the incident.
 
-**Demo footage that would have contradicted our own claim.** We were going to use `samples/synth_pattern.png` as the on-screen AI example. Scoring it first showed it is a procedural sine-wave fixture, not real AIGC: it goes 0.6884 clean → **0.0852** under noise. Filming it would have demonstrated the model failing at exactly the transform we were claiming to have fixed. We replaced it with two held-out test images selected by **worst-case margin across all six transforms** rather than by clean score — the AI image holds 0.9866–0.9984 and the authentic one 0.0001–0.0005 across every condition.
+**Demo footage that would have contradicted our own claim.** We were going to use `samples/synth_pattern.png` as the on-screen AI example. Scoring it first showed it is a procedural sine-wave fixture, not real AIGC: under the v1 deadline head it went 0.6884 → **0.0852** under noise (the shipped v2 head scores it 0.0374; both fixtures are pinned in `tests/golden_smoke.json`). Filming it would have demonstrated the model failing at exactly the transform we were claiming to have fixed. We replaced it with two held-out test images selected by **worst-case margin across all six transforms** rather than by clean score — the AI image holds 0.9866–0.9984 and the authentic one 0.0001–0.0005 across every condition.
 
 **A 16 GB box, discovered the hard way.** Each CLIP evaluation worker holds its own model copy, so ten concurrent workers all died with `MemoryError`. Five is the ceiling here; at that width the pipeline sustains ~12 images/s and the full 15-transform sweep takes about 30 minutes instead of 2.5 hours serial. Twice we also found two competing process sets writing to the same shard files — worth checking before concluding a run is merely slow.
 
@@ -242,7 +240,6 @@ Five things the grid says, in order of importance:
 
 | 文件 | 用途 | 位置 |
 |---|---|---|
-| `repostguard-track5-submission.zip` | 第 8 项上传 | `docs/` |
 | `01_results.png` ~ `05_tradeoff.png` | 第 9 项画廊 | `docs/video/gallery/` |
 | `track5_demo.mp4` + `.srt` | 已上传 YouTube，链接见第 5 项。字幕可在 YouTube 后台补传 | `build/` |
 

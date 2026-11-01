@@ -16,8 +16,9 @@ section whose narration overruns is REPORTED so the script gets shortened instea
 video silently drifting out of the required structure.
 
 Every number on screen is read from results/ at build time -- robustness_table.csv,
-ab_summary.csv, error_analysis.json, demo_live_scores.json -- so re-running the pipeline
-produces a video that still agrees with the committed data. Nothing is typed twice.
+ab_summary.csv, error_analysis.json, demo_live_scores.json, tests/golden_smoke.json -- so
+re-running the pipeline produces a video that still agrees with the committed data.
+Nothing is typed twice.
 
     python scripts/make_video.py --out build/track5_demo.mp4
     python scripts/make_video.py --no_vo        # silent, subtitles only (no network)
@@ -144,12 +145,14 @@ def load_data():
     err = json.loads((res / "error_analysis.json").read_text(encoding="utf-8"))["summary"]
     live_path = res / "demo_live_scores.json"
     live = json.loads(live_path.read_text(encoding="utf-8")) if live_path.exists() else {}
+    # The scores on the contract slide are the ones CI asserts, never literals.
+    smoke = json.loads((ROOT / "tests" / "golden_smoke.json").read_text(encoding="utf-8"))["tta"]
     if not rob or not ab:
         raise SystemExit("Missing results/robustness_table.csv or ab_summary.csv -- run the pipeline first.")
-    return rob, ab, demo, err, live
+    return rob, ab, demo, err, live, smoke
 
 
-ROB, AB, DEMO, ERR, LIVE = {}, {}, [], {}, {}
+ROB, AB, DEMO, ERR, LIVE, SMOKE = {}, {}, [], {}, {}, {}
 TRANSFORMS = ["clean", "jpeg_30", "blur_2.0", "resize_0.25", "noise_0.10", "crop_0.80"]
 
 
@@ -228,23 +231,27 @@ def _live_table(d, x, y, key, colour):
 def s_demo():
     slides = []
 
-    # 1. the submission contract
+    # 1. the inference contract
     img, d = canvas()
-    heading(d, "Directory in, JSON out", "live demo  -  submission contract")
+    heading(d, "Directory in, JSON out", "live demo  -  inference contract")
     panel(d, [110, 320, W - 110, 470])
     d.text((150, 370), "python infer.py --input_dir samples --output preds.json",
            font=F(38, mono=True), fill=GOOD)
     panel(d, [110, 520, W - 110, 850])
+    # Read from the same golden file CI asserts against: this slide used to carry the v1
+    # literals 0.0038 / 0.6884, which the shipped head has not produced since v2 landed.
     body = [
         "[",
-        '  { "image_path": "...\\\\samples\\\\real_noise.jpg", "pred": 0.0038 },',
-        '  { "image_path": "...\\\\samples\\\\synth_pattern.png", "pred": 0.6884 }',
+        '  { "image_path": "...\\\\samples\\\\real_noise.jpg", "pred": %.4f },' % SMOKE["real_noise.jpg"],
+        '  { "image_path": "...\\\\samples\\\\synth_pattern.png", "pred": %.4f }' % SMOKE["synth_pattern.png"],
         "]",
     ]
     for i, line in enumerate(body):
         d.text((150, 560 + i * 52), line, font=F(32, mono=True), fill=INK_2)
     d.text((110, 900), "One row per input file. An unreadable file gets a fallback score "
                        "instead of crashing the run.", font=F(30), fill=MUTED)
+    d.text((110, 944), "Both inputs are procedural fixtures from scripts/make_samples.py, "
+                       "not AI-generated images.", font=F(30), fill=MUTED)
     slides.append(img)
 
     # 2 + 3. real held-out images scored under every transform
@@ -405,8 +412,8 @@ def main() -> None:
     ap.add_argument("--voice", default=VOICE)
     args = ap.parse_args()
 
-    global ROB, AB, DEMO, ERR, LIVE
-    ROB, AB, DEMO, ERR, LIVE = load_data()
+    global ROB, AB, DEMO, ERR, LIVE, SMOKE
+    ROB, AB, DEMO, ERR, LIVE, SMOKE = load_data()
 
     work = args.out.parent / "video"
     work.mkdir(parents=True, exist_ok=True)

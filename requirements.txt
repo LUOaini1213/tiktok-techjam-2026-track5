@@ -12,9 +12,12 @@ pillow>=10.0.0
 # No cv2 native GUI is used; the measured runtime uses the headless build.
 opencv-python-headless>=4.10.0
 scipy>=1.13.0
-pandas>=2.2.2
+# Agg backend only: make_chart.py, make_ablation_chart.py, eval_v4.py, diagnose_v4.py and
+# report_v3.py (imported at module level, so tests/test_v3_report.py needs it too).
 matplotlib>=3.9.0
+# scripts/prepare_v3.py and scripts/prepare_v4.py read dataset parquet shards directly.
 pyarrow>=15.0.0
+# train_v3.py, train_v4.py, eval_v3.py and diagnose_v4.py cap BLAS threads with it.
 threadpoolctl>=3.2.0
 tqdm>=4.66.0
 pyyaml>=6.0

@@ -23,19 +23,20 @@ intervals, a published baseline, a 2x2 ablation that explains *why* it holds, a 
 that shows it is not cheating, and a post-deadline v2 whose every change is re-measured on the
 same held-out images as the deadline build.
 
+<!-- HEADLINE -->
 | | AUC | TPR@1%FPR |
 |---|---:|---:|
 | clean | 0.981 | 0.734 |
 | mean over 14 transforms | 0.977 | 0.645 |
-| worst transform (0.25x thumbnail) | 0.968 | 0.604 |
-| real vs fully-synthetic only, mean over transforms | 0.989 | 0.763 |
+| worst transform (`resize_0.25`) | 0.968 | 0.604 |
+| real vs fully-synthetic only, mean over 14 transforms | 0.989 | 0.763 |
 | cross-source, unseen generator family (WildFake), clean | 0.966 | -- |
 
-v2 numbers on the held-out 1400-image slice of SID-Set, calibration images excluded. The
-deadline build (v1: clean 0.963, mean 0.958, worst 0.941) already beat a UnivFD-style linear
-probe on 15 / 15 transforms in-distribution and by +0.12 to +0.25 AUC on an unseen generator
-family; v2 then improves every one of the 15 conditions on the same images (+0.019 AUC on
-average, 14 of 15 beyond overlapping bootstrap CIs). Built solo in about four days on a laptop with no GPU,
+v2 numbers on the held-out 1400-image slice of SID-Set, calibration images excluded. The deadline build (v1: clean 0.963, mean 0.958, worst 0.941) already beat a UnivFD-style linear probe on 15 / 15 transforms in-distribution and by +0.12 to +0.21 AUC on an unseen generator family; v2 then improves 15 of the 15 conditions on the same images (+0.019 AUC on average, 14 of 15 beyond overlapping bootstrap CIs).
+<!-- /HEADLINE -->
+
+Every number in that block is regenerated from `results/` by `scripts/update_readme.py`, and
+CI fails if this archived page and the CSVs disagree. Built solo in about four days on a laptop with no GPU,
 against the TikTok TechJam 2026 Track 5 brief — **this project was never submitted to
 Devpost**, so nothing here is a contest result. Work continued after the brief's deadline
 on the same branch history; the v1 / v2 split below marks that line.
@@ -64,6 +65,15 @@ python -m pip install torch torchvision --index-url https://download.pytorch.org
 python -m pip install -r requirements.txt
 python infer.py --input_dir samples --output preds.json     :: directory in, JSON out
 ```
+
+`samples/` holds the two 256x256 procedural fixtures written by `scripts/make_samples.py`:
+a seeded noise-and-gradient field and a sin/cos stripe pattern. Neither is AI-generated and
+neither comes from SID-Set -- they exist to exercise the `infer.py` contract, not to show
+detection. The scores today's shipped heads give them are pinned in `tests/golden_smoke.json`
+and listed in the [current README](../README.md#quickstart).
+
+The detection numbers are the tables below, measured on held-out SID-Set images and a
+cross-source WildFake subset.
 
 Our weights ship in the repo (`artifacts/repostguard.joblib`, 28 KB); the two frozen encoders it
 sits on top of are public checkpoints, so the **first** run downloads CLIP ViT-B/32 and
@@ -114,7 +124,7 @@ python -m pip install --upgrade -r requirements.txt
 ## Steps to reproduce results
 
 ```bat
-python scripts/make_samples.py                              :: tiny fixtures
+python scripts/make_samples.py                              :: the two procedural contract fixtures
 python scripts/download_data.py --train_per_class 8000 --val_per_class 1000   :: v2 scale (v1 used 2000/class)
 :: feature cache: 6 views/train image (clean/jpeg/blur/resize/noise/jitter), variants pre/proj/dino/fuse.
 :: One process per shard; each holds CLIP + DINOv2 (~1.5 GB, single-core bound). Merge refuses a short cache.
@@ -128,8 +138,9 @@ python scripts/make_chart.py                                :: robustness bar ch
 python scripts/error_analysis.py                            :: FP/FN note
 python scripts/eval_demo.py                                 :: WildFake demonstration benchmark
 python scripts/compare_ab.py                                :: A/B vs results/baseline/
+python scripts/make_golden_smoke.py                         :: re-pin the samples/ scores CI asserts
 python scripts/update_readme.py                             :: fill the README result sections
-python infer.py --input_dir samples --output preds.json     :: required submission command
+python infer.py --input_dir samples --output preds.json     :: the shipped entry point (directory in, JSON out)
 python app.py                                               :: optional Gradio demo
 ```
 
@@ -249,10 +260,12 @@ Mean change -0.0039 AUC over 15 conditions (0 improved and 0 regressed beyond ov
 ### Which task definition? The same scores, split by class
 
 Every headline number above scores **real vs all AIGC**, and in SID-Set "AIGC" includes the
-*tampered* class -- real photographs with a locally generated edit. Most published detectors,
-and most other entries in this track, score real vs **fully synthetic** only, which is the
-easier problem. Since the per-image scores are persisted, both definitions come from the
-same run (`scripts/per_class_table.py`, `results/robustness_by_class.csv`):
+*tampered* class -- real photographs with a locally generated edit. Most published detectors
+score real vs **fully synthetic** only, which is the easier problem; so did most of the 13
+Track-5 Devpost write-ups read in full during a 2026-09-03 survey of the 130 public entries
+(`docs/competitor_review.md`), usually without saying which definition they used. Since the
+per-image scores are persisted, both definitions come from the same run
+(`scripts/per_class_table.py`, `results/robustness_by_class.csv`):
 
 <!-- BY_CLASS -->
 | Transform | AUC: real vs **all AIGC** (headline) | AUC: real vs **fully synthetic** | AUC: real vs **tampered** | TPR@1%FPR all | TPR@1%FPR synthetic |
@@ -477,7 +490,7 @@ out to be wrong.
 
 ## Tools
 
-Python, PyTorch (CPU or CUDA), Hugging Face `transformers` (CLIP) + `datasets` (SID-Set / demo subset streaming), scikit-learn, OpenCV, SciPy, NumPy, pandas, matplotlib, Gradio.
+Python, PyTorch (CPU or CUDA), Hugging Face `transformers` (CLIP ViT-B/32 and DINOv2-small) + `datasets` (SID-Set / demo subset streaming), scikit-learn, joblib, OpenCV, Pillow, SciPy, NumPy, tqdm, PyYAML, matplotlib (only the two chart scripts, on the Agg backend), Gradio. `scripts/make_video.py` additionally needs moviepy and edge-tts; they are not in `requirements.txt` because the rendered mp4 is committed.
 
 ## Repository layout
 
@@ -488,8 +501,8 @@ src/                     features (CLIP + forensic), augment (15 transforms), ev
 scripts/                 data download, feature cache, train, tables, ablation, leakage control, video
 results/                 every table in the README, per-image scores, baseline snapshot
 artifacts/               shipped head (repostguard.joblib) + WEIGHTS.txt
-docs/                    findings write-up, competitor review, submission sheet, video script
-tests/                   52 tests; dataset-dependent ones skip on a clean checkout
+docs/                    findings write-up, competitor review, unused Devpost handover sheet, video script
+tests/                   unit + contract tests, run on every push
 ```
 
 ## License

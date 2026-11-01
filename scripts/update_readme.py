@@ -1,7 +1,12 @@
-"""Populate the README's generated sections from results/.
+"""Populate the generated sections of README.md and docs/v2_history.md.
 
 Idempotent: each section lives between `<!-- NAME -->` and `<!-- /NAME -->` and is
 rewritten in place, so re-running after a fresh eval just refreshes the numbers.
+
+README.md carries the sections about the current tree (the samples/ scores pinned in
+tests/golden_smoke.json and the test count). The v1/v2 result tables moved with the
+pre-v3 README into docs/v2_history.md; they are still rendered from the committed
+results/*.csv files, with image links relative to docs/.
 
 Usage:  python scripts/update_readme.py
 """
@@ -10,6 +15,7 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -44,7 +50,7 @@ def _md_table(rows: list[dict]) -> str:
     return f"{head}\n{body}"
 
 
-def robustness_section(results: Path) -> str:
+def robustness_section(results: Path, link_prefix: str = "") -> str:
     rows = _rows(results / "robustness_table.csv")
     if not rows:
         return MISSING
@@ -63,7 +69,7 @@ def robustness_section(results: Path) -> str:
         "inference path after the transform, so clean and transformed numbers are directly comparable."
     )
     if (results / "robustness_chart.png").exists():
-        parts += ["", "![Robustness: clean vs social-media transforms](results/robustness_chart.png)"]
+        parts += ["", f"![Robustness: clean vs social-media transforms]({link_prefix}results/robustness_chart.png)"]
     return "\n".join(parts)
 
 
@@ -216,7 +222,7 @@ def _abl_matrix(rows: list[dict]) -> dict:
     return {"mean": mean, "worst": worst}
 
 
-def ablation_section(results: Path) -> str:
+def ablation_section(results: Path, link_prefix: str = "") -> str:
     rows = _rows(results / "ablation_table.csv")
     if not rows:
         return MISSING
@@ -258,7 +264,7 @@ def ablation_section(results: Path) -> str:
                     f"{b.get('forensic_4v', nan):.4f} | **{b.get('forensic_5v', nan):.4f}** |"
                 )
     if (results / "ablation_chart.png").exists():
-        out += ["", "![Ablation: features x training views vs a UnivFD-style baseline](results/ablation_chart.png)"]
+        out += ["", f"![Ablation: features x training views vs a UnivFD-style baseline]({link_prefix}results/ablation_chart.png)"]
     return "\n".join(out)
 
 
@@ -328,39 +334,169 @@ def by_class_section(results: Path) -> str:
     return f"{head}\n{body}{note}"
 
 
-def replace_section(text: str, name: str, body: str) -> str:
+def _split_clean(rows: list[dict]) -> tuple[dict, list[dict]]:
+    clean = next(r for r in rows if r["transform"] == "clean")
+    return clean, [r for r in rows if r["transform"] != "clean"]
+
+
+def _mean(values) -> float:
+    values = list(values)
+    return sum(values) / len(values)
+
+
+def _auc_by_head(rows: list[dict]) -> dict[tuple[str, str], float]:
+    return {(r["transform"], r["head"]): float(r["auc"]) for r in rows}
+
+
+def headline_section(results: Path) -> str:
+    """The first-screen summary table and the v1/v2 sentence under it.
+
+    These are the numbers most likely to be quoted outside the repo, so they are
+    derived here rather than typed: every cell traces back to a committed CSV.
+    """
+    rob = _rows(results / "robustness_table.csv")
+    by_class = _rows(results / "robustness_by_class.csv")
+    demo = _rows(results / "demo_benchmark.csv")
+    v1 = _rows(results / "v1" / "robustness_table.csv")
+    abl = _rows(results / "ablation_table.csv")
+    abl_demo = _rows(results / "ablation_demo_table.csv")
+    v1v2 = _rows(results / "ab_v1_v2.csv")
+    if not all([rob, by_class, demo, v1, abl, abl_demo, v1v2]):
+        return MISSING
+
+    clean, transformed = _split_clean(rob)
+    worst = min(transformed, key=lambda r: float(r["auc"]))
+    _, by_class_t = _split_clean(by_class)
+    demo_clean = next(r for r in demo if r["transform"] == "clean")
+
+    table = [
+        "| | AUC | TPR@1%FPR |",
+        "|---|---:|---:|",
+        f"| clean | {float(clean['auc']):.3f} | {float(clean['tpr_at_1fpr']):.3f} |",
+        f"| mean over {len(transformed)} transforms | {_mean(float(r['auc']) for r in transformed):.3f} "
+        f"| {_mean(float(r['tpr_at_1fpr']) for r in transformed):.3f} |",
+        f"| worst transform (`{worst['transform']}`) | {float(worst['auc']):.3f} "
+        f"| {float(worst['tpr_at_1fpr']):.3f} |",
+        f"| real vs fully-synthetic only, mean over {len(by_class_t)} transforms "
+        f"| {_mean(float(r['auc_synthetic']) for r in by_class_t):.3f} "
+        f"| {_mean(float(r['tpr1_synthetic']) for r in by_class_t):.3f} |",
+        f"| cross-source, unseen generator family (WildFake), clean | {float(demo_clean['auc']):.3f} | -- |",
+    ]
+
+    v1_clean, v1_transformed = _split_clean(v1)
+
+    # v1 is the `forensic_5v` corner of the 2x2; the UnivFD-style baseline is `clip_only_4v`.
+    ind = _auc_by_head(abl)
+    ind_names = sorted({r["transform"] for r in abl})
+    ind_wins = sum(1 for t in ind_names if ind[(t, "forensic_5v")] > ind[(t, "clip_only_4v")])
+    cross = _auc_by_head(abl_demo)
+    cross_deltas = [
+        cross[(t, "forensic_5v")] - cross[(t, "clip_only_4v")]
+        for t in sorted({r["transform"] for r in abl_demo})
+    ]
+
+    deltas = [float(r["delta_auc"]) for r in v1v2]
+    disjoint = sum(1 for r in v1v2 if r["ci_disjoint"] == "yes")
+
+    note = (
+        f"v2 numbers on the held-out {clean['n']}-image slice of SID-Set, calibration images "
+        f"excluded. The deadline build (v1: clean {float(v1_clean['auc']):.3f}, "
+        f"mean {_mean(float(r['auc']) for r in v1_transformed):.3f}, "
+        f"worst {min(float(r['auc']) for r in v1_transformed):.3f}) already beat a UnivFD-style "
+        f"linear probe on {ind_wins} / {len(ind_names)} transforms in-distribution and by "
+        f"{min(cross_deltas):+.2f} to {max(cross_deltas):+.2f} AUC on an unseen generator family; "
+        f"v2 then improves {sum(1 for d in deltas if d > 0)} of the {len(deltas)} conditions on "
+        f"the same images ({_mean(deltas):+.3f} AUC on average, {disjoint} of {len(deltas)} "
+        f"beyond overlapping bootstrap CIs)."
+    )
+    return "\n".join(table) + "\n\n" + note
+
+
+def samples_section(root: Path) -> str:
+    path = root / "tests" / "golden_smoke.json"
+    if not path.exists():
+        return MISSING
+    golden = json.loads(path.read_text(encoding="utf-8"))
+
+    def scored(values: dict) -> str:
+        return ", ".join(f"`{name}` {value:.4f}" for name, value in sorted(values.items()))
+
+    heads = [f"default head (`{golden['weights']}`): {scored(golden['tta'])}"]
+    opt_in = golden.get("opt_in_v4")
+    if opt_in:
+        heads.append(f"opt-in V4 artifact (`{opt_in['weights']}`): {scored(opt_in['tta'])}")
+    return (
+        "P(AIGC) through the default 3-view TTA path -- " + "; ".join(heads) + ". "
+        f"These values are pinned in `tests/golden_smoke.json` and asserted by CI to "
+        f"{golden['tolerance']}, so a swapped head or a drifted encoder turns the badge red "
+        "instead of quietly changing what the smoke test prints; after installing a new head, "
+        "re-pin them with `python scripts/make_golden_smoke.py`."
+    )
+
+
+def tests_count_section(root: Path) -> str:
+    files = sorted((root / "tests").glob("test_*.py"))
+    if not files:
+        return MISSING
+    n = sum(
+        len(re.findall(r"^\s*def test_\w+", f.read_text(encoding="utf-8"), re.M)) for f in files
+    )
+    return (
+        f"`tests/` defines {n} test functions across {len(files)} files; the ones that need the "
+        "SID-Set download skip on a clean checkout."
+    )
+
+
+def replace_section(text: str, name: str, body: str, where: str = "README") -> str:
     start, end = f"<!-- {name} -->", f"<!-- /{name} -->"
     i = text.find(start)
     if i < 0:
-        raise SystemExit(f"README is missing the {start} marker")
+        raise SystemExit(f"{where} is missing the {start} marker")
     j = text.find(end, i)
     if j < 0:
-        raise SystemExit(f"README is missing the {end} marker")
+        raise SystemExit(f"{where} is missing the {end} marker")
     return text[: i + len(start)] + "\n" + body + "\n" + text[j:]
+
+
+def _render(path: Path, required, optional=()) -> None:
+    text = path.read_text(encoding="utf-8")
+    for name, body in required:
+        text = replace_section(text, name, body, where=path.name)
+    # Sections that only exist in some revisions: rendered when their markers are present.
+    for name, body in optional:
+        if f"<!-- {name} -->" in text:
+            text = replace_section(text, name, body, where=path.name)
+    path.write_text(text, encoding="utf-8", newline="\n")
+    print(f"Updated {path}")
 
 
 def main() -> None:
     enable_utf8_stdout()
     cfg = load_config()
+    root = cfg["root"]
     results = cfg["results_dir"]
-    readme = cfg["root"] / "README.md"
-    text = readme.read_text(encoding="utf-8")
-    for name, body in (
-        ("ROBUSTNESS_TABLE", robustness_section(results)),
-        ("DEMO_TABLE", demo_section(results)),
-        ("AB_TABLE", ab_section(results)),
-        ("BY_CLASS", by_class_section(results)),
-        ("ABLATION", ablation_section(results)),
-        ("LEAKAGE", leakage_section(results)),
-        ("ERROR_ANALYSIS", error_section(results)),
-    ):
-        text = replace_section(text, name, body)
-    # Sections that only exist in newer README revisions: rendered when their markers are present.
-    for name, body in (("AB_V1V2", ab_v1v2_section(results)), ("CROPS_TABLE", crops_section(results))):
-        if f"<!-- {name} -->" in text:
-            text = replace_section(text, name, body)
-    readme.write_text(text, encoding="utf-8")
-    print(f"Updated {readme}")
+    _render(
+        root / "README.md",
+        (
+            ("SAMPLES", samples_section(root)),
+            ("TESTS_COUNT", tests_count_section(root)),
+        ),
+    )
+    # The archived pre-v3 README lives in docs/, so its image links climb one level.
+    _render(
+        root / "docs" / "v2_history.md",
+        (
+            ("HEADLINE", headline_section(results)),
+            ("ROBUSTNESS_TABLE", robustness_section(results, link_prefix="../")),
+            ("DEMO_TABLE", demo_section(results)),
+            ("AB_TABLE", ab_section(results)),
+            ("BY_CLASS", by_class_section(results)),
+            ("ABLATION", ablation_section(results, link_prefix="../")),
+            ("LEAKAGE", leakage_section(results)),
+            ("ERROR_ANALYSIS", error_section(results)),
+        ),
+        (("AB_V1V2", ab_v1v2_section(results)), ("CROPS_TABLE", crops_section(results))),
+    )
 
 
 if __name__ == "__main__":

@@ -29,13 +29,30 @@ jobs:
           OMP_NUM_THREADS: "2"
           HF_HUB_DISABLE_TELEMETRY: "1"
         run: python -m pytest tests/ -q
-      - name: Submission contract smoke test
+      - name: README numbers still regenerate from results/
+        # The generated blocks in README.md and in the archived pre-v3 README
+        # (docs/v2_history.md) come from results/*.csv and tests/golden_smoke.json.
+        # Regenerate them on a clean checkout and fail if anything moved: a hand-edited AUC,
+        # or a results/ file changed without re-running the script, both show up here as a
+        # non-empty diff.
+        run: |
+          python scripts/update_readme.py
+          git diff --exit-code README.md docs/v2_history.md
+      - name: Inference contract smoke test
         env:
           OMP_NUM_THREADS: "2"
           HF_HUB_DISABLE_TELEMETRY: "1"
         run: |
           python - <<'PY'
-          import json, subprocess, sys
+          import json, pathlib, subprocess, sys
+          # 0 <= pred <= 1 alone survives a swapped head or a drifted encoder: one fixture's
+          # score has already moved from 0.6884 to 0.0374 between two green runs. Pin it.
+          golden = json.load(open("tests/golden_smoke.json", encoding="utf-8"))
+          tol = golden["tolerance"]
+          expected_by_weights = {
+              golden["weights"]: golden["tta"],
+              golden["opt_in_v4"]["weights"]: golden["opt_in_v4"]["tta"],
+          }
           for weights in ("artifacts/repostguard.joblib", "results/v4/repostguard.joblib"):
               result = subprocess.run([sys.executable, "infer.py", "--input_dir", "samples", "--output", "preds.json", "--weights", weights], text=True, capture_output=True)
               print(result.stdout)
@@ -45,5 +62,10 @@ jobs:
               rows = json.load(open("preds.json", encoding="utf-8"))
               assert len(rows) == 2 and all(set(r) == {"image_path", "pred"} for r in rows)
               assert all(0.0 <= r["pred"] <= 1.0 for r in rows)
-              print(weights, "preds.json ok:", rows)
+              expected = expected_by_weights[weights]
+              got = {pathlib.PurePath(r["image_path"]).name: r["pred"] for r in rows}
+              assert set(got) == set(expected), (weights, sorted(got), sorted(expected))
+              for name, want in expected.items():
+                  assert abs(got[name] - want) < tol, (weights, name, got[name], want)
+              print(weights, "preds.json ok, matches tests/golden_smoke.json:", rows)
           PY

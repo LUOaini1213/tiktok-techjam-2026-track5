@@ -117,24 +117,34 @@ class JsonContractTests(unittest.TestCase):
             self.assertLessEqual(row["pred"], 1.0)
             self.assertIsInstance(row["pred"], float)
 
-    def test_score_directory_samples_ranking(self):
+    def test_score_directory_samples_match_golden(self):
+        """The sample fixtures must score what tests/golden_smoke.json records.
+
+        This test used to be called ...ranking and asserted no ranking: only that both
+        file names came back inside [0, 1]. That assertion survives a swapped head --
+        synth_pattern.png has in fact already crossed 0.5 between two passing runs.
+        Regenerate the golden values with scripts/make_golden_smoke.py when the head,
+        an encoder or the feature path changes.
+        """
         weights = model_path()
         self.assertTrue(weights.exists(), f"missing smoke weights at {weights}")
+        golden = json.loads((ROOT / "tests" / "golden_smoke.json").read_text(encoding="utf-8"))
+        expected, tol = golden["no_tta"], golden["tolerance"]
         samples = ROOT / "samples"
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "preds.json"
             rows = score_directory(samples, out, use_tta=False)
             disk = json.loads(out.read_text(encoding="utf-8"))
         self.assertEqual(rows, disk)
-        self.assertGreaterEqual(len(rows), 2)
         by_name = {}
         for row in rows:
             self.assertEqual(set(row), {"image_path", "pred"})
             self.assertGreaterEqual(row["pred"], 0.0)
             self.assertLessEqual(row["pred"], 1.0)
             by_name[Path(row["image_path"]).name] = row["pred"]
-        self.assertIn("real_noise.jpg", by_name)
-        self.assertIn("synth_pattern.png", by_name)
+        self.assertEqual(set(by_name), set(expected))
+        for name, want in expected.items():
+            self.assertAlmostEqual(by_name[name], want, delta=tol, msg=name)
 
 
 if __name__ == "__main__":

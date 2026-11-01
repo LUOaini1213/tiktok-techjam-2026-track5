@@ -204,6 +204,17 @@ python infer.py --input_dir samples --output preds.json
 python app.py
 ```
 
+`samples/` holds the two 256x256 procedural fixtures written by `scripts/make_samples.py`:
+a seeded noise-and-gradient field and a sin/cos stripe pattern. Neither is AI-generated and
+neither comes from SID-Set -- they exist to exercise the `infer.py` contract, not to show
+detection, so their scores are a regression anchor rather than a result:
+
+<!-- SAMPLES -->
+P(AIGC) through the default 3-view TTA path -- default head (`artifacts/repostguard.joblib`): `real_noise.jpg` 0.0140, `synth_pattern.png` 0.6602; opt-in V4 artifact (`results/v4/repostguard.joblib`): `real_noise.jpg` 0.1124, `synth_pattern.png` 0.8634. These values are pinned in `tests/golden_smoke.json` and asserted by CI to 0.001, so a swapped head or a drifted encoder turns the badge red instead of quietly changing what the smoke test prints; after installing a new head, re-pin them with `python scripts/make_golden_smoke.py`.
+<!-- /SAMPLES -->
+
+The detection numbers are the V3 and V4 sections above, measured on held-out test originals.
+
 The first run downloads the public CLIP and DINOv2 checkpoints, then caches them.
 The [constraints file](constraints-v3.txt) records the measured local package
 versions, not a complete cross-platform OS lockfile. Use an isolated environment;
@@ -348,8 +359,11 @@ figures and does not represent v3 or an actual Devpost entry. `python app.py` is
 current interactive demo. No updated YouTube upload is claimed.
 
 Solo project. Repository history records implementation and experiment provenance.
-Tools: Python, PyTorch, Hugging Face Transformers/Datasets, scikit-learn, NumPy,
-SciPy, OpenCV, matplotlib and Gradio.
+Tools: Python, PyTorch, Hugging Face Transformers (CLIP ViT-B/32 and DINOv2-small),
+Datasets and Hub, scikit-learn, joblib, NumPy, SciPy, OpenCV, Pillow, PyArrow,
+threadpoolctl, tqdm, PyYAML, matplotlib (Agg backend, charts and reports only) and Gradio.
+`scripts/make_video.py` additionally needs moviepy and edge-tts; they are not in
+`requirements.txt` because the rendered historical video (`build/track5_demo.mp4`) is committed.
 
 ## Repository layout
 
@@ -365,6 +379,10 @@ results/v2/             archived baseline head and historical diagnostics
 docs/                   current protocol and preserved historical README
 tests/                  contracts, feature consistency, groups, policy and resume
 ```
+
+<!-- TESTS_COUNT -->
+`tests/` defines 120 test functions across 22 files; the ones that need the SID-Set download skip on a clean checkout.
+<!-- /TESTS_COUNT -->
 
 No new code license is granted by this update. Upstream datasets and models keep
 their licenses; see their source cards and the v3 protocol.

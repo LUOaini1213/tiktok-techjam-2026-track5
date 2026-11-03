@@ -2,8 +2,10 @@
 
 This is the historical README before the v3 data audit. Its legacy metrics include
 19 train/validation overlaps and repeated training files; they are diagnostics,
-not a contamination-free final test. See the current [README](../README.md) and
-[v3 protocol](v3_protocol.md). Shell commands assume the repository root.
+not a contamination-free final test. The JPEG re-encoding control below did not
+detect a JPEG-history shortcut, but it does not rule out source or compression bias.
+See the current [README](../README.md) and [v3 protocol](v3_protocol.md) for the
+locked V3/V4 results. Shell commands assume the repository root.
 
 ---
 
@@ -19,8 +21,8 @@ not a contamination-free final test. See the current [README](../README.md) and
 CLIP ViT-B/32 fused with a frozen DINOv2-small (110M parameters together, CPU-only) plus a
 native-resolution forensic branch, evaluated on all 15 real-world transforms a social platform
 applies -- JPEG, thumbnail, blur, noise, colour jitter, crop -- with bootstrap confidence
-intervals, a published baseline, a 2x2 ablation that explains *why* it holds, a leakage control
-that shows it is not cheating, and a post-deadline v2 whose every change is re-measured on the
+intervals, a published baseline, a 2x2 ablation that explains *why* it holds, a JPEG re-encoding
+control that did not detect a compression-history shortcut, and a post-deadline v2 whose every change is re-measured on the
 same held-out images as the deadline build.
 
 <!-- HEADLINE -->
@@ -51,7 +53,8 @@ on the same branch history; the v1 / v2 split below marks that line.
 2. **The same branch is what collapses under noise** (0.925 -> 0.810 at sigma 0.10), and a
    noise training view is what makes it safe. Alone they are worth -0.006 and +0.004; together
    +0.014. The interaction is the result, and it corrected our own first explanation.
-3. **It is not reading JPEG history.** Re-encoding both classes identically moves every head
+3. **This control did not detect a JPEG-history shortcut** (it does not rule out other
+   source bias). Re-encoding both classes identically moves every head
    by <= +0.0009 AUC; a bare blockiness scalar separates the classes at only 0.586.
 4. **Four times the data plus a second frozen encoder is worth +0.019 AUC everywhere.** The
    post-deadline v2 (8000 images per class, a jitter training view, CLIP + DINOv2-small fusion

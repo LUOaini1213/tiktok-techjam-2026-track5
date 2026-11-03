@@ -66,10 +66,14 @@ def collect_errors(
     fps.sort(key=lambda r: r["pred"], reverse=True)
     fns.sort(key=lambda r: r["pred"])
 
+    def portable(rows: list[dict]) -> list[dict]:
+        # Committed results must not carry this machine's absolute data paths.
+        return [{**r, "path": _portable_path(r["path"], cfg["root"])} for r in rows]
+
     out = {
         "summary": _summarize(scored, fps, fns),
-        "false_positives": fps[:k],
-        "false_negatives": fns[:k],
+        "false_positives": portable(fps[:k]),
+        "false_negatives": portable(fns[:k]),
         "note": (
             "FP: authentic images scored as AIGC (creator harm). "
             "FN: generated images missed, especially after JPEG-30."
@@ -79,6 +83,15 @@ def collect_errors(
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
     return dest
+
+
+def _portable_path(path, root: Path) -> str:
+    """Repository-relative POSIX path when `path` is inside `root`, else the bare file name."""
+    p = Path(path)
+    try:
+        return p.resolve().relative_to(Path(root).resolve()).as_posix()
+    except ValueError:
+        return p.name
 
 
 def _fpr_at_tpr(y: np.ndarray, s: np.ndarray, target_tpr: float = 0.95) -> float:

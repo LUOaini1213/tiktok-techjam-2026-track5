@@ -264,6 +264,9 @@ def s_demo():
         name = _live_table(d, 110, 330, key, colour)
         entry = LIVE.get(key, {})
         p = entry.get("path")
+        # Committed paths are repository-relative (data/sid_subset/...); data/ is not shipped.
+        if p and not Path(p).is_absolute():
+            p = ROOT / p
         if p and Path(p).exists():
             thumb = fit_image(Path(p), 620, 620)
             img.paste(thumb, (760, 330))

@@ -3,12 +3,14 @@
 Idempotent: each section lives between `<!-- NAME -->` and `<!-- /NAME -->` and is
 rewritten in place, so re-running after a fresh eval just refreshes the numbers.
 
-README.md carries the sections about the current tree (the samples/ scores pinned in
-tests/golden_smoke.json and the test count). The v1/v2 result tables moved with the
-pre-v3 README into docs/v2_history.md; they are still rendered from the committed
+README.md carries the sections about the current tree: the first-screen summary (TLDR),
+the V3 and V4 sealed-test tables (rendered from results/v3/ and results/v4/), the samples/
+scores pinned in tests/golden_smoke.json and the test count. The v1/v2 result tables moved
+with the pre-v3 README into docs/v2_history.md; they are still rendered from the committed
 results/*.csv files, with image links relative to docs/.
 
-Usage:  python scripts/update_readme.py
+Usage:  python scripts/update_readme.py           # rewrite the generated blocks
+        python scripts/update_readme.py --check   # exit 1 if any block is stale
 """
 
 from __future__ import annotations
@@ -447,6 +449,132 @@ def tests_count_section(root: Path) -> str:
     )
 
 
+def _json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _pct(value: float, places: int = 1) -> str:
+    return f"{100 * value:.{places}f}%"
+
+
+def _conditions(rows: list[dict], key: str, **match) -> int:
+    return len({r[key] for r in rows if all(r[k] == v for k, v in match.items())})
+
+
+# Display names for the results/v3/summary.json domains, in README order.
+V3_DOMAINS = (
+    ("SID-Set fresh", "Fresh SID"),
+    ("OwensLab/CommunityForensics-Small", "Held-out VQDiffusion + CF real images"),
+    ("all_sealed", "All newly sealed images"),
+    ("WildFake reference", "COCO / DALL·E demonstration reference"),
+)
+
+
+def v3_table_section(results: Path) -> str:
+    summary_path = results / "v3" / "summary.json"
+    rows = _rows(results / "v3" / "evaluation.csv")
+    if not summary_path.exists() or not rows:
+        return MISSING
+    summary = _json(summary_path)["results"]
+    lines = [
+        "| Test domain | Originals | Conditions | v2 mean AUC | v3 mean AUC | v3 review rate |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    for key, label in V3_DOMAINS:
+        n = {r["n"] for r in rows if r["domain"] == key and r["model"] == "v3"}
+        if len(n) != 1:
+            raise SystemExit(f"results/v3/evaluation.csv: expected one original count for {key}, got {n}")
+        k = _conditions(rows, "transform", domain=key, model="v3")
+        v2, v3 = summary[key]["v2"], summary[key]["v3"]
+        lines.append(
+            f"| {label} | {n.pop()} | {k} | {v2['auc']:.4f} | {v3['auc']:.4f} | {_pct(v3['review_rate'])} |"
+        )
+    return "\n".join(lines)
+
+
+def _flags(original: dict) -> str:
+    errors = original["real_any_view_errors"]
+    return "0 observed" if errors == 0 else f"{errors}/{original['n_real']}"
+
+
+def v4_table_section(results: Path) -> str:
+    summary_path = results / "v4" / "summary.json"
+    if not summary_path.exists():
+        return MISSING
+    metrics = _json(summary_path)["metrics"]
+    lines = [
+        "| Model / primary policy | Mean AUC | Real false flags | AI flag recall | AI false clear | Review |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    for label, model, policy in (
+        ("Default V3 / frozen strict", "v3_default", "v3_frozen_strict"),
+        ("Opt-in recalibration / conditionwise", "v3_recal", "conditionwise"),
+    ):
+        m = metrics[model]["all"][policy]
+        lines.append(
+            f"| {label} | {m['mean_auc']:.4f} | {_flags(m['original'])} | {_pct(m['recall'])} | "
+            f"{_pct(m['false_clear_rate'], 2)} | {_pct(m['review_rate'])} |"
+        )
+    return "\n".join(lines)
+
+
+def tldr_section(results: Path) -> str:
+    """First-screen summary: what was built, what was found (with numbers), main limits.
+
+    Every number comes from results/v4/summary.json, results/v4/evaluation.csv,
+    results/v4/selection.json or results/v3/summary.json; CI fails if they disagree.
+    """
+    paths = [
+        results / "v4" / "summary.json",
+        results / "v4" / "evaluation.csv",
+        results / "v4" / "selection.json",
+        results / "v3" / "summary.json",
+        results / "v3" / "evaluation.csv",
+    ]
+    if not all(p.exists() for p in paths):
+        return MISSING
+    v4 = _json(paths[0])["metrics"]["v3_default"]
+    v4_rows = _rows(paths[1])
+    selection = _json(paths[2])
+    v3 = _json(paths[3])["results"]
+    v3_rows = _rows(paths[4])
+
+    allv = v4["all"]["v3_frozen_strict"]
+    sid = v4["SID"]["v3_frozen_strict"]
+    cf = v4["CF_StyleGANXL"]["v3_frozen_strict"]
+    orig = allv["original"]
+    n_orig = orig["n_real"] + orig["n_fake"]
+    n_cond = _conditions(v4_rows, "condition", model="v3_default", domain="all", policy="v3_frozen_strict")
+    candidates = [k for k in selection["trials"] if k != selection["selected"]]
+    passed = len(selection["eligible"])
+    v3_n = {r["n"] for r in v3_rows if r["domain"] == "all_sealed" and r["model"] == "v3"}.pop()
+    flagged = orig["real_any_view_errors"]
+    return "\n".join(
+        [
+            "- **Built:** a CPU-only detector for AI-generated images after repost transforms "
+            "(JPEG, thumbnails, blur, noise, crops and multi-step chains): frozen CLIP ViT-B/32 and "
+            "DINOv2-small features plus hand-written forensic statistics, a trained linear head with "
+            "sigmoid calibration, and a three-way *Likely AIGC / Needs review / Low AIGC signal* policy.",
+            f"- **Latest sealed test** (V4, {n_orig} originals × {n_cond} conditions, shipped default "
+            f"model): mean AUC **{allv['mean_auc']:.4f}**; **{sid['mean_auc']:.4f}** on fresh SID but "
+            f"only **{cf['mean_auc']:.4f}** on the held-out StyleGANXL generator with matched "
+            "Community Forensics real images.",
+            f"- **Policy trade-off:** {flagged}/{orig['n_real']} real originals flagged in any condition "
+            f"(one-sided 95% upper bound {_pct(orig['real_any_view_fpr_upper'], 2)}, so no 1% FPR "
+            f"guarantee), but mean AI flag recall is only **{_pct(allv['recall'])}** and "
+            f"**{_pct(allv['review_rate'])}** of scored views go to *Needs review*.",
+            f"- **Earlier v3 sealed test** ({v3_n} originals, a separate test set): mean AUC "
+            f"{v3['all_sealed']['v3']['auc']:.4f}, {v3['OwensLab/CommunityForensics-Small']['v3']['auc']:.4f} "
+            "on held-out VQDiffusion; the same default model scores lower on the newer V4 test above.",
+            f"- **V4 head search:** {passed} of {len(candidates)} new candidate heads passed the "
+            "predeclared development gates, so V3 stays the default.",
+            "- **Main limits:** small tests from few real sources and generators; no platform-wide or "
+            "unseen-generator guarantee; the shipped heads are non-commercial research artifacts "
+            "because part of their training data is CC-BY-NC-SA-4.0.",
+        ]
+    )
+
+
 def replace_section(text: str, name: str, body: str, where: str = "README") -> str:
     start, end = f"<!-- {name} -->", f"<!-- /{name} -->"
     i = text.find(start)
@@ -458,32 +586,52 @@ def replace_section(text: str, name: str, body: str, where: str = "README") -> s
     return text[: i + len(start)] + "\n" + body + "\n" + text[j:]
 
 
-def _render(path: Path, required, optional=()) -> None:
-    text = path.read_text(encoding="utf-8")
+def _render(path: Path, required, optional=(), check: bool = False) -> bool:
+    """Rewrite the generated blocks; with check=True only report whether they are stale."""
+    original = path.read_text(encoding="utf-8")
+    text = original
     for name, body in required:
         text = replace_section(text, name, body, where=path.name)
     # Sections that only exist in some revisions: rendered when their markers are present.
     for name, body in optional:
         if f"<!-- {name} -->" in text:
             text = replace_section(text, name, body, where=path.name)
+    if check:
+        stale = text.splitlines() != original.splitlines()
+        print(f"{'STALE' if stale else 'ok'}: {path}")
+        return not stale
     path.write_text(text, encoding="utf-8", newline="\n")
     print(f"Updated {path}")
+    return True
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="do not write; exit 1 if any generated block differs from results/",
+    )
+    args = parser.parse_args(argv)
     enable_utf8_stdout()
     cfg = load_config()
     root = cfg["root"]
     results = cfg["results_dir"]
-    _render(
+    ok = _render(
         root / "README.md",
         (
+            ("TLDR", tldr_section(results)),
+            ("V3_TABLE", v3_table_section(results)),
+            ("V4_TABLE", v4_table_section(results)),
             ("SAMPLES", samples_section(root)),
             ("TESTS_COUNT", tests_count_section(root)),
         ),
+        check=args.check,
     )
     # The archived pre-v3 README lives in docs/, so its image links climb one level.
-    _render(
+    ok &= _render(
         root / "docs" / "v2_history.md",
         (
             ("HEADLINE", headline_section(results)),
@@ -496,8 +644,12 @@ def main() -> None:
             ("ERROR_ANALYSIS", error_section(results)),
         ),
         (("AB_V1V2", ab_v1v2_section(results)), ("CROPS_TABLE", crops_section(results))),
+        check=args.check,
     )
+    if args.check and not ok:
+        print("Generated README blocks are stale: run `python scripts/update_readme.py`.")
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

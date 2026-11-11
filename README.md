@@ -10,28 +10,20 @@ with a conservative **Likely AIGC / Needs review / Low AIGC signal** decision po
 Low signal is not proof of authenticity, and a calibrated score is not a universal
 probability for an arbitrary deployment population.
 
-## What's new in v3
+## At a glance
 
-- **Corrected data accounting.** The old 16,000-file training cache contained only
-  11,997 unique files; 19 files overlapped training and validation. The downloader
-  now deduplicates resumed streams. The v3 candidate fits on unique originals and excludes
-  decoded-pixel/near matches across training and evaluation.
-- **Generator diversity, within local CPU resources.** SID-Set is supplemented by
-  multiple LatDiff generators, StyleGAN2 and BigGAN from the authors' Community
-  Forensics Small dataset. The whole VQDiffusion family is held out. No COCO or
-  WildFake reference images are deliberately sampled for training, calibration or development.
-  SID includes COCO-derived captions/edits, so shared parent photos cannot be ruled out.
-- **Actual repost chains.** Crop → thumbnail → JPEG, noise → JPEG, blur → resize →
-  JPEG, and two rounds of sharing. Matching training views use the same parameter
-  distributions for both classes; they add no extra inference forwards.
-- **Lower-risk decisions.** Probability fitting and threshold selection use
-  disjoint calibration originals. Worst-view thresholds count original images,
-  not correlated augmentation rows. FPR, recall, false-clear rate, coverage and
-  review rate are published together.
-- **Locked evaluation.** Grouped CV and final fitting use the same consistency
-  recipe. A candidate or small blend is selected on development only, subject to
-  clean/thumbnail/SID regression guards. The model checksum is frozen before the
-  new sealed test is scored. Paired bootstrap intervals compare matched originals.
+<!-- TLDR -->
+- **Built:** a CPU-only detector for AI-generated images after repost transforms (JPEG, thumbnails, blur, noise, crops and multi-step chains): frozen CLIP ViT-B/32 and DINOv2-small features plus hand-written forensic statistics, a trained linear head with sigmoid calibration, and a three-way *Likely AIGC / Needs review / Low AIGC signal* policy.
+- **Latest sealed test** (V4, 384 originals × 19 conditions, shipped default model): mean AUC **0.9044**; **0.9893** on fresh SID but only **0.8198** on the held-out StyleGANXL generator with matched Community Forensics real images.
+- **Policy trade-off:** 0/192 real originals flagged in any condition (one-sided 95% upper bound 1.55%, so no 1% FPR guarantee), but mean AI flag recall is only **15.0%** and **87.2%** of scored views go to *Needs review*.
+- **Earlier v3 sealed test** (448 originals, a separate test set): mean AUC 0.9675, 0.9501 on held-out VQDiffusion; the same default model scores lower on the newer V4 test above.
+- **V4 head search:** 0 of 8 new candidate heads passed the predeclared development gates, so V3 stays the default.
+- **Main limits:** small tests from few real sources and generators; no platform-wide or unseen-generator guarantee; the shipped heads are non-commercial research artifacts because part of their training data is CC-BY-NC-SA-4.0.
+<!-- /TLDR -->
+
+Every number in this summary and in the V3/V4 result tables below is rendered from
+`results/` by `scripts/update_readme.py`; CI (`python scripts/update_readme.py --check`
+and `tests/test_readme_results.py`) fails if the README and the committed results disagree.
 
 CommunityForensics-Small is **CC-BY-NC-SA-4.0**. The v3 model is for
 **non-commercial research**; a public repository does not grant commercial rights.
@@ -43,12 +35,14 @@ Dataset images are not redistributed.
 The development-selected model was frozen before these new tests were scored.
 Both models see the same originals and transformations within each comparison.
 
+<!-- V3_TABLE -->
 | Test domain | Originals | Conditions | v2 mean AUC | v3 mean AUC | v3 review rate |
 |---|---:|---:|---:|---:|---:|
 | Fresh SID | 256 | 19 | 0.9846 | 0.9865 | 74.7% |
 | Held-out VQDiffusion + CF real images | 192 | 19 | 0.8403 | 0.9501 | 92.5% |
 | All newly sealed images | 448 | 19 | 0.9299 | 0.9675 | 82.3% |
 | COCO / DALL·E demonstration reference | 400 | 6 | 0.9013 | 0.9160 | 85.1% |
+<!-- /V3_TABLE -->
 
 These are descriptive means across conditions, not independent repeated trials.
 CF inputs are uniformly fit to 512x512 before evaluation. The reference is advisory,
@@ -71,8 +65,9 @@ FPR 2.5%. No model or threshold was changed in response to these diagnostics.
 [paired AUC-difference intervals](results/v3/paired_auc.csv) ·
 [deployment checks](results/v3/preflight.json).
 
-Local release checks: **68 passed, 2 skipped**; real CLI inference, unreadable-file
-fallback, the repost UI callback and a localhost HTTP demo smoke test all pass.
+At the v3 release, the local release checks also exercised real CLI inference, the
+unreadable-file fallback, the repost UI callback and a localhost HTTP demo; the current
+test count is generated at the end of this README and CI runs the suite on every push.
 <!-- /V3_RESULTS -->
 
 The mixed-data candidate uses 12,765 unique training originals; the new protocol has 1,004 calibration originals,
@@ -156,10 +151,12 @@ Both versions score the same **384 originals × 19 conditions**, without using
 these results for model or threshold selection. V4's selected fallback and its
 independently recalibrated V3 comparison are identical, not separate new models.
 
+<!-- V4_TABLE -->
 | Model / primary policy | Mean AUC | Real false flags | AI flag recall | AI false clear | Review |
 |---|---:|---:|---:|---:|---:|
 | Default V3 / frozen strict | 0.9044 | 0 observed | 15.0% | 0.33% | 87.2% |
 | Opt-in recalibration / conditionwise | 0.9044 | 0 observed | 30.9% | 3.32% | 63.8% |
+<!-- /V4_TABLE -->
 
 Rates are means across correlated conditions, not independent repeated trials.
 Lower review comes with **more false clearances**: counting each AI original once
@@ -183,9 +180,9 @@ policy false-clear cases are in [the error note](results/v4/error_analysis.json)
 The **default artifact is unchanged**; V4 is available only for explicit research
 comparison, not silently promoted.
 
-Local V4 release checks: **88 passed, 2 skipped**. Both pretest/report byte locks,
-exact global-only packaging predictions, the real directory-to-JSON CLI,
-unreadable-file fallback and the seven-input/three-output localhost demo pass.
+The V4 release checks cover both pretest/report byte locks,
+exact global-only packaging predictions, the real directory-to-JSON CLI, the
+unreadable-file fallback and the seven-input/three-output localhost demo.
 The single-image versus batched calibration score drift is below the fixed
 1e-5 numerical guard; this is a measured runtime check, not a platform guarantee.
 
@@ -289,6 +286,16 @@ python -m pytest tests/ -q
 python infer.py --input_dir samples --output preds.json
 ```
 
+The published numbers can be checked without torch, the dataset or a model download
+(`pip install pyyaml pillow pytest` is enough); CI runs the same commands on Linux and Windows:
+
+```text
+python scripts/check_encoder_receipts.py
+python scripts/update_readme.py --check
+python scripts/check_local_paths.py
+python -m pytest -q tests/test_readme_results.py tests/test_readme_claims.py
+```
+
 On Windows, `pythonw scripts/run_v3.py` runs the resumable CPU workflow without a
 console window. It logs to `logs/v3/` and checkpoints individual feature rows.
 It never pushes Git or automatically changes the shipped artifact.
@@ -352,6 +359,31 @@ These paired observations show failure patterns, not a proven causal attribution
 to a particular feature branch. Transformed rows of one original are correlated;
 they must not be counted as independent evidence for a safety guarantee.
 
+## History: what changed in v3
+
+The v3 iteration replaced the v1/v2 pipeline after a data audit:
+
+- **Corrected data accounting.** The old 16,000-file training cache contained only
+  11,997 unique files; 19 files overlapped training and validation. The downloader
+  now deduplicates resumed streams. The v3 candidate fits on unique originals and excludes
+  decoded-pixel/near matches across training and evaluation.
+- **Generator diversity, within local CPU resources.** SID-Set is supplemented by
+  multiple LatDiff generators, StyleGAN2 and BigGAN from the authors' Community
+  Forensics Small dataset. The whole VQDiffusion family is held out. No COCO or
+  WildFake reference images are deliberately sampled for training, calibration or development.
+  SID includes COCO-derived captions/edits, so shared parent photos cannot be ruled out.
+- **Actual repost chains.** Crop → thumbnail → JPEG, noise → JPEG, blur → resize →
+  JPEG, and two rounds of sharing. Matching training views use the same parameter
+  distributions for both classes; they add no extra inference forwards.
+- **Lower-risk decisions.** Probability fitting and threshold selection use
+  disjoint calibration originals. Worst-view thresholds count original images,
+  not correlated augmentation rows. FPR, recall, false-clear rate, coverage and
+  review rate are published together.
+- **Locked evaluation.** Grouped CV and final fitting use the same consistency
+  recipe. A candidate or small blend is selected on development only, subject to
+  clean/thumbnail/SID regression guards. The model checksum is frozen before the
+  new sealed test is scored. Paired bootstrap intervals compare matched originals.
+
 ## Video, authorship and tools
 
 The public [three-minute historical demo](https://youtu.be/wbeGLieLZ9c) quotes v1
@@ -381,7 +413,7 @@ tests/                  contracts, feature consistency, groups, policy and resum
 ```
 
 <!-- TESTS_COUNT -->
-`tests/` defines 120 test functions across 22 files; the ones that need the SID-Set download skip on a clean checkout.
+`tests/` defines 138 test functions across 23 files; the ones that need the SID-Set download skip on a clean checkout.
 <!-- /TESTS_COUNT -->
 
 No new code license is granted by this update. Upstream datasets and models keep

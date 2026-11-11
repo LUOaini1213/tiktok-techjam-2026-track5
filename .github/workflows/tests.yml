@@ -30,14 +30,13 @@ jobs:
           HF_HUB_DISABLE_TELEMETRY: "1"
         run: python -m pytest tests/ -q
       - name: README numbers still regenerate from results/
-        # The generated blocks in README.md and in the archived pre-v3 README
-        # (docs/v2_history.md) come from results/*.csv and tests/golden_smoke.json.
-        # Regenerate them on a clean checkout and fail if anything moved: a hand-edited AUC,
-        # or a results/ file changed without re-running the script, both show up here as a
-        # non-empty diff.
-        run: |
-          python scripts/update_readme.py
-          git diff --exit-code README.md docs/v2_history.md
+        # The generated blocks in README.md (TLDR, V3/V4 tables, samples, test count) and in
+        # the archived pre-v3 README (docs/v2_history.md) come from results/ and
+        # tests/golden_smoke.json. --check re-renders them in memory and fails if anything
+        # moved: a hand-edited AUC, or a results/ file changed without re-running the script.
+        run: python scripts/update_readme.py --check
+      - name: No absolute local paths in tracked files
+        run: python scripts/check_local_paths.py
       - name: Inference contract smoke test
         env:
           OMP_NUM_THREADS: "2"
@@ -69,3 +68,24 @@ jobs:
                   assert abs(got[name] - want) < tol, (weights, name, got[name], want)
               print(weights, "preds.json ok, matches tests/golden_smoke.json:", rows)
           PY
+
+  evidence-windows:
+    # Byte-locked evidence, generated README blocks and the local-path gate on a Windows
+    # checkout (core.autocrlf=true on the runner). No torch or model download needed.
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install the light dependencies
+        run: python -m pip install pyyaml pillow pytest
+      - name: Receipts, README blocks, local paths and README number tests
+        shell: bash
+        run: |
+          set -e
+          python scripts/check_encoder_receipts.py
+          python scripts/update_readme.py --check
+          python scripts/check_local_paths.py
+          python -m pytest -q tests/test_readme_results.py tests/test_readme_claims.py

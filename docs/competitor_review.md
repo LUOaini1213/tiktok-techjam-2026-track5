@@ -15,10 +15,9 @@ Not in the 130 Track 5 entries, not in the 72 most recent submissions of the ful
 gallery. `RepostGuard-Lite` (2 likes) is a different team — OpenCLIP + CommunityForensics
 training, FastAPI/Vue demo; SID-Set "retained only as historical pipeline pilots".
 
-Either the Devpost entry was never filed, or it was filed under a different name without
-the Track 5 tag. The handover sheet (`docs/devpost_submission.md`) was written for someone
-else to file. **This needs checking in the account's "My projects" page before anything
-else in this document matters.**
+Resolved since this review was written: the project was **never submitted** to Devpost
+(see the [README](../README.md)). The unused submission handover sheet that used to sit in
+`docs/` was removed from the tree on 2026-11-03; git history keeps it.
 
 ## The field, by public votes
 

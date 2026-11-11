@@ -1,3 +1,17 @@
+# Text files are stored and checked out with LF on every OS; result binaries are never
+# converted. The byte-locked evidence rules below override this default.
+* text=auto eol=lf
+*.joblib binary
+*.npz binary
+*.npy binary
+*.pt binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.mp4 binary
+*.zip binary
+*.parquet binary
+
 # These files participate in byte-level experiment checksums. Do not normalize
 # CRLF/LF on checkout: Windows and Linux must see the exact locked evidence bytes.
 /results/v3/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

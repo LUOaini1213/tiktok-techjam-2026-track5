@@ -1,7 +1,7 @@
 {
   "real": {
     "name": "0_000545.jpg",
-    "path": "E:\\\u8d5b\u90535\\data\\sid_subset\\val\\real\\0_000545.jpg",
+    "path": "data/sid_subset/val/real/0_000545.jpg",
     "worst_margin": 0.4995,
     "scores": {
       "clean": 0.0001,
@@ -14,7 +14,7 @@
   },
   "aigc": {
     "name": "1_000288.jpg",
-    "path": "E:\\\u8d5b\u90535\\data\\sid_subset\\val\\aigc\\1_000288.jpg",
+    "path": "data/sid_subset/val/aigc/1_000288.jpg",
     "worst_margin": 0.4866,
     "scores": {
       "clean": 0.9906,

@@ -12,7 +12,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.error_analysis import _fpr_at_tpr, _summarize
+from src.error_analysis import _fpr_at_tpr, _portable_path, _summarize
 
 
 def _row(label: int, pred: float, pred_jpeg30: float) -> dict:
@@ -20,6 +20,12 @@ def _row(label: int, pred: float, pred_jpeg30: float) -> dict:
 
 
 class ErrorSummaryTests(unittest.TestCase):
+    def test_committed_paths_are_repository_relative(self):
+        inside = ROOT / "data" / "sid_subset" / "val" / "real" / "0_000328.jpg"
+        self.assertEqual(_portable_path(inside, ROOT), "data/sid_subset/val/real/0_000328.jpg")
+        outside = Path(ROOT.anchor) / "elsewhere" / "private" / "img.jpg"
+        self.assertEqual(_portable_path(outside, ROOT), "img.jpg")
+
     def test_fpr_at_tpr_on_separable_scores(self):
         y = np.array([0, 0, 0, 0, 1, 1, 1, 1])
         s = np.array([0.0, 0.1, 0.2, 0.3, 0.7, 0.8, 0.9, 1.0])

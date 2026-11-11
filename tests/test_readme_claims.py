@@ -117,6 +117,20 @@ class ReadmeClaimTests(unittest.TestCase):
         self.assertEqual(float(bound), rnd(worst_delta, 4))
         self.assertEqual(float(sep), rnd(blockiness, 3))
 
+    def test_jpeg_control_is_not_stated_as_proof(self):
+        # The control only failed to detect a JPEG-history shortcut. The two sentences that
+        # once presented it as proof were withdrawn; keep them out of every published page.
+        withdrawn = ("not reading jpeg history", "shows it is not cheating")
+        pages = [ROOT / "README.md", *sorted((ROOT / "docs").glob("*.md"))]
+        self.assertIn(ARCHIVED_README, pages)
+        for page in pages:
+            text = re.sub(r"\s+", " ", page.read_text(encoding="utf-8")).lower()
+            for phrase in withdrawn:
+                self.assertNotIn(phrase, text, f"{page.name} restores a withdrawn claim")
+        self.assertIn("does not rule out source or compression bias", README)
+        current = re.sub(r"\s+", " ", (ROOT / "README.md").read_text(encoding="utf-8"))
+        self.assertIn("does not prove that source/compression bias is absent", current)
+
     def test_finding4_v1_to_v2(self):
         deltas = [float(r["delta_auc"]) for r in _rows(RESULTS / "ab_v1_v2.csv")]
         mean_claim, count, lo, hi, tpr_v1, tpr_v2 = self._find(

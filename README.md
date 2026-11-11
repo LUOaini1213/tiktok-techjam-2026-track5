@@ -413,7 +413,7 @@ tests/                  contracts, feature consistency, groups, policy and resum
 ```
 
 <!-- TESTS_COUNT -->
-`tests/` defines 137 test functions across 23 files; the ones that need the SID-Set download skip on a clean checkout.
+`tests/` defines 138 test functions across 23 files; the ones that need the SID-Set download skip on a clean checkout.
 <!-- /TESTS_COUNT -->
 
 No new code license is granted by this update. Upstream datasets and models keep
